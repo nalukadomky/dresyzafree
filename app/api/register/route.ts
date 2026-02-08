@@ -7,17 +7,52 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { teamName, contactPerson, phone, email, leagues, username, password, logo, referrerId } = body;
 
-    // Validace
-    if (!teamName || !contactPerson || !phone || !email || !leagues || !username || !password) {
-      return NextResponse.json(
-        { error: 'Všechna pole jsou povinná' },
-        { status: 400 }
-      );
+    // Detailní validace jednotlivých polí
+    const fieldErrors: Record<string, string> = {};
+    
+    if (!teamName || !teamName.trim()) {
+      fieldErrors.teamName = 'Název týmu je povinný';
     }
-
+    
+    if (!contactPerson || !contactPerson.trim()) {
+      fieldErrors.contactPerson = 'Kontaktní osoba je povinná';
+    }
+    
+    if (!phone || !phone.trim()) {
+      fieldErrors.phone = 'Telefon je povinný';
+    } else if (!/^[\d\s\+\-\(\)]+$/.test(phone)) {
+      fieldErrors.phone = 'Telefon obsahuje neplatné znaky';
+    }
+    
+    if (!email || !email.trim()) {
+      fieldErrors.email = 'E-mail je povinný';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      fieldErrors.email = 'Neplatný formát e-mailu';
+    }
+    
     if (!Array.isArray(leagues) || leagues.length === 0) {
+      fieldErrors.leagues = 'Vyberte alespoň jednu ligu';
+    }
+    
+    if (!username || !username.trim()) {
+      fieldErrors.username = 'Uživatelské jméno je povinné';
+    } else if (username.length < 3) {
+      fieldErrors.username = 'Uživatelské jméno musí mít alespoň 3 znaky';
+    }
+    
+    if (!password) {
+      fieldErrors.password = 'Heslo je povinné';
+    } else if (password.length < 6) {
+      fieldErrors.password = 'Heslo musí mít alespoň 6 znaků';
+    }
+    
+    if (Object.keys(fieldErrors).length > 0) {
+      const errorMessages = Object.values(fieldErrors);
       return NextResponse.json(
-        { error: 'Vyberte alespoň jednu ligu' },
+        { 
+          error: errorMessages.length === 1 ? errorMessages[0] : `Chyby v ${errorMessages.length} polích`,
+          fieldErrors 
+        },
         { status: 400 }
       );
     }
@@ -81,10 +116,14 @@ export async function POST(request: NextRequest) {
       { message: 'Tým byl úspěšně zaregistrován', team: teamWithoutPassword },
       { status: 201 }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error('Registration error:', error);
+    
+    // Vrátíme konkrétní chybovou zprávu
+    const errorMessage = error?.message || error?.toString() || 'Chyba při registraci';
+    
     return NextResponse.json(
-      { error: 'Chyba při registraci' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

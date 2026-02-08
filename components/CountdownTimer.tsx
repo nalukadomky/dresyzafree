@@ -87,11 +87,11 @@ export default function CountdownTimer({ deadline }: CountdownTimerProps) {
       </div>
 
       {/* Obsah */}
-      <div className="relative z-10 p-6 md:p-8 text-center">
-        <div className="text-5xl md:text-6xl lg:text-7xl font-extrabold text-white mb-3 drop-shadow-2xl">
+      <div className="relative z-10 p-4 sm:p-6 md:p-8 text-center">
+        <div className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-extrabold text-white mb-2 sm:mb-3 drop-shadow-2xl">
           {String(value).padStart(2, '0')}
         </div>
-        <div className="text-xs md:text-sm font-semibold text-white/60 uppercase tracking-widest">
+        <div className="text-[10px] sm:text-xs md:text-sm font-semibold text-white/60 uppercase tracking-widest">
           {label}
         </div>
       </div>
@@ -102,7 +102,7 @@ export default function CountdownTimer({ deadline }: CountdownTimerProps) {
   );
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 md:gap-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 md:gap-6">
       <TimeUnit value={timeLeft.months} label={timeLeft.months === 1 ? 'Měsíc' : timeLeft.months < 5 ? 'Měsíce' : 'Měsíců'} />
       <TimeUnit value={timeLeft.days} label={timeLeft.days === 1 ? 'Den' : timeLeft.days < 5 ? 'Dny' : 'Dní'} />
       <TimeUnit value={timeLeft.hours} label={timeLeft.hours === 1 ? 'Hodina' : timeLeft.hours < 5 ? 'Hodiny' : 'Hodin'} />

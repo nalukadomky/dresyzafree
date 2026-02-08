@@ -35,10 +35,11 @@ export async function POST(request: NextRequest) {
       message: 'Přihlášení úspěšné',
       token,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Admin login error:', error);
+    const errorMessage = error?.message || 'Chyba při přihlášení';
     return NextResponse.json(
-      { error: 'Chyba při přihlášení' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

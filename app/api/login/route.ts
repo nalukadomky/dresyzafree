@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
 
     if (!username || !password) {
       return NextResponse.json(
-        { error: 'Uživatelské jméno a heslo jsou povinné' },
+        { error: 'Uživatelské jméno (nebo e-mail) a heslo jsou povinné' },
         { status: 400 }
       );
     }

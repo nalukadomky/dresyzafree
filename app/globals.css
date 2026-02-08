@@ -46,6 +46,18 @@ body {
   outline: none;
 }
 
+/* Error stavy pro inputy */
+.glass-input.border-red-500 {
+  border-color: rgba(239, 68, 68, 0.8) !important;
+  background: rgba(239, 68, 68, 0.1) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+.glass-input.border-red-500:focus {
+  border-color: rgba(239, 68, 68, 1) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3);
+}
+
 /* Moderní button efekty */
 .modern-button {
   position: relative;
@@ -71,6 +83,31 @@ body {
 /* Smooth scroll */
 html {
   scroll-behavior: smooth;
+}
+
+/* Loading spinner animation */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Pulse animation for slow effects */
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
 }
 
 /* Moderní animace */

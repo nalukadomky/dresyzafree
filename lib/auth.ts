@@ -9,8 +9,9 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-export async function verifyTeam(username: string, password: string) {
-  const team = await db.teams.getByUsername(username);
+export async function verifyTeam(identifier: string, password: string) {
+  // Zkusíme najít tým podle username nebo email
+  const team = await db.teams.getByUsernameOrEmail(identifier);
   if (!team) return null;
   
   const isValid = await verifyPassword(password, team.password);

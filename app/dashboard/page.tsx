@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import CountdownTimer from '@/components/CountdownTimer';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface Team {
   id: string;
@@ -72,15 +73,37 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="min-h-screen animated-background flex items-center justify-center">
-        <div className="text-white text-xl">Načítání...</div>
+        <div className="glass-card rounded-3xl p-12 flex flex-col items-center space-y-4">
+          <LoadingSpinner size="lg" />
+          <p className="text-white text-lg font-medium">Načítání dat...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen animated-background flex items-center justify-center">
-        <div className="text-red-400 text-xl">{error}</div>
+      <div className="min-h-screen animated-background flex items-center justify-center px-4">
+        <div className="glass-card rounded-3xl p-8 max-w-md">
+          <div className="flex items-center space-x-3 mb-4">
+            <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h2 className="text-2xl font-bold text-white">Chyba</h2>
+          </div>
+          <p className="text-red-200 mb-6">{error}</p>
+          <button
+            onClick={() => {
+              localStorage.removeItem('token');
+              localStorage.removeItem('teamId');
+              localStorage.removeItem('userType');
+              router.push('/login/team');
+            }}
+            className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-all duration-300"
+          >
+            Zpět na přihlášení
+          </button>
+        </div>
       </div>
     );
   }
@@ -100,29 +123,31 @@ export default function DashboardPage() {
 
       <div className="max-w-4xl mx-auto relative z-10">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div className="flex items-center space-x-4">
             {team?.logo && (
               <img
                 src={team.logo}
                 alt={`${team.teamName} logo`}
-                className="w-16 h-16 rounded-full object-cover border-4 border-white/30"
+                className="w-12 h-12 sm:w-16 sm:h-16 rounded-full object-cover border-4 border-white/30"
+                loading="lazy"
               />
             )}
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-white">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white">
                 Vítejte, {team?.teamName}
               </h1>
               {team?.id && (
-                <p className="text-white/60 text-sm mt-1">
-                  Vaše ID: <span className="font-mono font-semibold">{team.id}</span>
+                <p className="text-white/60 text-xs sm:text-sm mt-1">
+                  Vaše ID: <span className="font-mono font-semibold break-all">{team.id}</span>
                 </p>
               )}
             </div>
           </div>
           <button
             onClick={handleLogout}
-            className="px-6 py-2.5 bg-red-500/90 hover:bg-red-600 text-white font-semibold rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-red-500/30"
+            className="px-6 py-2.5 bg-red-500/90 hover:bg-red-600 text-white font-semibold rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-red-500/30 w-full sm:w-auto"
+            aria-label="Odhlásit se"
           >
             Odhlásit se
           </button>
@@ -130,30 +155,30 @@ export default function DashboardPage() {
 
         {/* Časovač - Dodání dresů */}
         {team?.deadline && (
-          <div className="glass-card rounded-3xl shadow-2xl p-8 mb-6 fade-in-up">
-            <h2 className="text-2xl font-bold text-white mb-6">Dodání dresů</h2>
+          <div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up">
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6">Dodání dresů</h2>
             <CountdownTimer deadline={team.deadline} />
           </div>
         )}
 
         {!team?.deadline && (
-          <div className="glass-card rounded-3xl shadow-2xl p-8 mb-6 fade-in-up">
-            <h2 className="text-2xl font-bold text-white mb-4">Dodání dresů</h2>
-            <p className="text-white/60 italic">Dodání dresů zatím nebylo nastaveno správcem</p>
+          <div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up">
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Dodání dresů</h2>
+            <p className="text-white/60 italic text-sm sm:text-base">Dodání dresů zatím nebylo nastaveno správcem</p>
           </div>
         )}
 
         {/* Časovač - Termín tarifů */}
         {team?.tariffValidUntil && (
-          <div className="glass-card rounded-3xl shadow-2xl p-8 mb-6 fade-in-up">
-            <h2 className="text-2xl font-bold text-white mb-6">Dresy do výroby už za:</h2>
+          <div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up">
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6">Dresy do výroby už za:</h2>
             <CountdownTimer deadline={team.tariffValidUntil} />
           </div>
         )}
 
         {/* Doporučit klub */}
-        <div className="glass-card rounded-3xl shadow-2xl p-8 mb-6 fade-in-up">
-          <h2 className="text-2xl font-bold text-white mb-4">Doporučit klub</h2>
+        <div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up">
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Doporučit klub</h2>
           <div className="space-y-4">
             <div className="bg-blue-600/20 border border-blue-400/30 rounded-lg p-4">
               <p className="text-white/90 mb-2">
@@ -171,13 +196,27 @@ export default function DashboardPage() {
                 <p className="text-2xl font-mono font-bold text-white">{team?.id}</p>
               </div>
               <button
-                onClick={() => {
+                onClick={async (e) => {
                   if (team?.id) {
-                    navigator.clipboard.writeText(team.id);
-                    alert('ID bylo zkopírováno do schránky!');
+                    try {
+                      await navigator.clipboard.writeText(team.id);
+                      // Zobrazíme toast notifikaci místo alertu
+                      const button = e.currentTarget;
+                      const originalText = button.textContent;
+                      button.textContent = '✓ Zkopírováno';
+                      button.classList.add('bg-green-600');
+                      setTimeout(() => {
+                        if (button) {
+                          button.textContent = originalText;
+                          button.classList.remove('bg-green-600');
+                        }
+                      }, 2000);
+                    } catch (err) {
+                      console.error('Chyba při kopírování:', err);
+                    }
                   }
                 }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-semibold"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-300 font-semibold hover:scale-105"
               >
                 Kopírovat ID
               </button>
@@ -186,8 +225,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Odkazy na dresy */}
-        <div className="glass-card rounded-3xl shadow-2xl p-8 mb-6 fade-in-up">
-          <h2 className="text-2xl font-bold text-white mb-4">Odkazy na dresy</h2>
+        <div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up">
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Odkazy na dresy</h2>
           <div className="space-y-4">
             {team?.jerseyUrl ? (
               <div>

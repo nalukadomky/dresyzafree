@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function TeamLoginPage() {
   const router = useRouter();
@@ -89,17 +90,17 @@ export default function TeamLoginPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Uživatelské jméno */}
+          {/* Uživatelské jméno nebo e-mail */}
           <div>
             <label className="block text-white font-semibold mb-2">
-              Uživatelské jméno
+              Uživatelské jméno nebo e-mail
             </label>
             <input
               type="text"
               value={formData.username}
               onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               className="w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none"
-              placeholder="Uživatelské jméno"
+              placeholder="Uživatelské jméno nebo e-mail"
               required
             />
           </div>
@@ -121,15 +122,24 @@ export default function TeamLoginPage() {
 
           {error && (
             <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 rounded-lg">
-              {error}
+              <div className="flex items-start space-x-2">
+                <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1">
+                  <p className="font-semibold text-red-300 mb-1">Chyba</p>
+                  <p className="text-sm">{error}</p>
+                </div>
+              </div>
             </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold text-lg rounded-2xl shadow-[0_0_25px_rgba(59,130,246,0.4)] transform transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_35px_rgba(59,130,246,0.6)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden"
+            className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold text-lg rounded-2xl shadow-[0_0_25px_rgba(59,130,246,0.4)] transform transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_35px_rgba(59,130,246,0.6)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden flex items-center justify-center space-x-2"
           >
+            {loading && <LoadingSpinner size="sm" />}
             <span className="relative z-10">{loading ? 'Přihlašuji...' : 'Přihlásit se'}</span>
           </button>
 

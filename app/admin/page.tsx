@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Team } from '@/lib/db';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -99,9 +100,10 @@ export default function AdminPage() {
       await fetchTeams(token!);
       setShowEditModal(false);
       setEditingTeam(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving team:', err);
-      alert('Chyba při ukládání změn');
+      const errorMessage = err?.message || 'Chyba při ukládání změn';
+      alert(errorMessage);
     }
   };
 
@@ -129,9 +131,10 @@ export default function AdminPage() {
       await fetchTeams(token!);
       setShowDeleteConfirm(false);
       setDeletingTeamId(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting team:', err);
-      alert('Chyba při mazání týmu');
+      const errorMessage = err?.message || 'Chyba při mazání týmu';
+      alert(errorMessage);
     }
   };
 
@@ -192,7 +195,10 @@ export default function AdminPage() {
   if (loading) {
     return (
       <div className="min-h-screen animated-background flex items-center justify-center">
-        <div className="text-white text-xl">Načítání...</div>
+        <div className="glass-card rounded-3xl p-12 flex flex-col items-center space-y-4">
+          <LoadingSpinner size="lg" />
+          <p className="text-white text-lg font-medium">Načítání týmů...</p>
+        </div>
       </div>
     );
   }
@@ -212,20 +218,20 @@ export default function AdminPage() {
 
       <div className="max-w-7xl mx-auto relative z-10">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-white">
             Správa týmů
           </h1>
           <button
             onClick={handleLogout}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+            className="px-6 py-2.5 bg-red-500/90 hover:bg-red-600 text-white font-semibold rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-red-500/30"
           >
             Odhlásit se
           </button>
         </div>
 
         {/* Filtry a vyhledávání */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-6 mb-6">
+        <div className="glass-card rounded-2xl shadow-2xl p-4 sm:p-6 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
             {/* Vyhledávání */}
             <div className="flex-1">
@@ -293,7 +299,7 @@ export default function AdminPage() {
         </div>
 
         {/* Tabulka týmů */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-6 overflow-x-auto">
+        <div className="glass-card rounded-2xl shadow-2xl p-4 sm:p-6 overflow-x-auto">
           <table className="w-full text-white">
             <thead>
               <tr className="border-b border-white/20">
