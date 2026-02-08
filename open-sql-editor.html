@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase SQL Editor - Otevřít migraci</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>🚀 Supabase SQL Migrace</h1>
+    <p>Klikni na odkaz níže pro otevření SQL Editoru v Supabase:</p>
+    <a href="https://app.supabase.com/project/hcmeehplfkywifolcgio/sql/new" target="_blank" style="font-size: 18px; padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 8px; display: inline-block; margin: 20px 0;">
+        Otevřít SQL Editor
+    </a>
+    
+    <h2>📋 SQL migrace:</h2>
+    <p>Zkopíruj celý obsah níže a vlož do SQL Editoru:</p>
+    <textarea id="sql" readonly style="width: 100%; height: 600px; font-family: monospace; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">-- Vytvoření tabulky teams
+CREATE TABLE IF NOT EXISTS teams (
+  id TEXT PRIMARY KEY,
+  teamName TEXT NOT NULL,
+  contactPerson TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  email TEXT NOT NULL,
+  leagues JSONB NOT NULL DEFAULT '[]',
+  username TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  createdAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  logo TEXT,
+  referrerId TEXT,
+  status TEXT CHECK (status IN ('nekontaktováno', 'kontaktováno', 'nemá zájem', 'deal')) DEFAULT 'nekontaktováno',
+  numberOfJerseys INTEGER,
+  numberOfTariffs INTEGER,
+  deadline TIMESTAMPTZ,
+  tariffValidUntil TIMESTAMPTZ,
+  jerseyUrl TEXT,
+  shortsUrl TEXT,
+  socksUrl TEXT,
+  deliveryAddress TEXT,
+  ico TEXT,
+  meetingNote TEXT
+);
+
+-- Vytvoření tabulky admin
+CREATE TABLE IF NOT EXISTS admin (
+  username TEXT PRIMARY KEY,
+  password TEXT NOT NULL
+);
+
+-- Vytvoření indexů pro lepší výkon
+CREATE INDEX IF NOT EXISTS idx_teams_username ON teams(username);
+CREATE INDEX IF NOT EXISTS idx_teams_referrerId ON teams(referrerId);
+CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status);
+CREATE INDEX IF NOT EXISTS idx_teams_createdAt ON teams(createdAt);
+
+-- Vložení defaultního admin účtu
+INSERT INTO admin (username, password)
+VALUES ('lasak.design@gmail.com', '$2a$10$gzOTWOCom0l8enLku2H7POu2l2JPVkI/2MbwA66ZRP281oSzcSwKC')
+ON CONFLICT (username) DO NOTHING;</textarea>
+    
+    <button onclick="copySQL()" style="margin-top: 10px; padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">
+        📋 Zkopírovat SQL
+    </button>
+    
+    <script>
+        function copySQL() {
+            const sql = document.getElementById('sql');
+            sql.select();
+            document.execCommand('copy');
+            alert('✅ SQL zkopírováno! Nyní ho vlož do SQL Editoru a klikni Run.');
+        }
+    </script>
+</body>
+</html>
+
