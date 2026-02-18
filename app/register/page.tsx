@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { CZECH_FOOTBALL_CLUBS } from '@/data/czech-football-clubs';
+import { CZECH_FOOTBALL_CLUBS } from '@/lib/czech-football-clubs';
 
 const PRE_DEFINED_LEAGUES = [
   'Chance liga',
@@ -36,6 +36,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [clubSuggestions, setClubSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showOptional, setShowOptional] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -266,7 +267,20 @@ export default function RegisterPage() {
         return;
       }
 
-      // Úspěšná registrace - přesměrování na přihlášení
+      // Auto-login po registraci - bez nutnosti znovu zadávat údaje
+      const loginRes = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: formData.username, password: formData.password }),
+      });
+      const loginData = await loginRes.json();
+      if (loginRes.ok && loginData.token) {
+        localStorage.setItem('token', loginData.token);
+        localStorage.setItem('userType', 'team');
+        if (loginData.team) localStorage.setItem('teamId', loginData.team.id);
+        router.push('/dashboard');
+        return;
+      }
       router.push('/login/team?registered=true');
     } catch (err: any) {
       // Zobrazíme konkrétní chybovou zprávu
@@ -282,7 +296,7 @@ export default function RegisterPage() {
       {/* Tlačítko zpět */}
       <Link
         href="/"
-        className="fixed top-4 left-4 px-4 py-2 glass-card text-white rounded-xl border border-white/20 transition-all duration-300 hover:scale-105 hover:border-white/40 flex items-center space-x-2 z-10 shadow-lg"
+        className="fixed top-4 left-4 px-4 py-2.5 glass-card text-white/90 rounded-xl border border-white/10 transition-all duration-200 hover:bg-white/5 hover:text-white flex items-center gap-2 z-10"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -290,37 +304,12 @@ export default function RegisterPage() {
         <span>Zpět</span>
       </Link>
 
-      <div className="max-w-2xl w-full glass-card rounded-3xl shadow-2xl p-8 md:p-12 relative z-10 fade-in-up">
-        <h1 className="text-3xl md:text-4xl font-bold text-white text-center mb-8">
+      <div className="max-w-2xl w-full glass-card rounded-2xl p-8 md:p-12 relative z-10 fade-in-up">
+        <h1 className="text-2xl md:text-3xl font-semibold text-white text-center mb-8 tracking-tight">
           Registrace týmu
         </h1>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Logo týmu */}
-          <div>
-            <label className="block text-white font-semibold mb-2">
-              Logo týmu (volitelné)
-            </label>
-            <div className="space-y-3">
-              {logoPreview && (
-                <div className="flex justify-center">
-                  <img
-                    src={logoPreview}
-                    alt="Náhled loga"
-                    className="w-32 h-32 object-cover rounded-full border-4 border-white/30"
-                  />
-                </div>
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleLogoChange}
-                className="w-full px-4 py-3 rounded-lg bg-white/20 text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer border border-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-              <p className="text-white/60 text-sm">Maximální velikost: 5MB</p>
-            </div>
-          </div>
-
+        <form onSubmit={handleSubmit} className="space-y-5">
           {/* Název týmu */}
           <div className="relative">
             <label className="block text-white font-semibold mb-2">
@@ -349,17 +338,17 @@ export default function RegisterPage() {
               {showSuggestions && clubSuggestions.length > 0 && (
                 <div
                   ref={suggestionsRef}
-                  className="absolute z-50 w-full mt-1 bg-gray-900/95 backdrop-blur-md rounded-xl shadow-2xl border border-white/30 max-h-60 overflow-y-auto"
+                  className="absolute z-50 w-full mt-1 glass-card rounded-xl border border-white/10 max-h-60 overflow-y-auto"
                 >
                   {clubSuggestions.map((club, index) => (
                     <button
                       key={index}
                       type="button"
                       onClick={() => handleSuggestionClick(club)}
-                      className="w-full text-left px-4 py-3 hover:bg-blue-600/30 transition-colors text-white first:rounded-t-xl last:rounded-b-xl border-b border-white/10 last:border-b-0"
+                      className="w-full text-left px-4 py-3 hover:bg-violet-600/30 transition-colors text-white first:rounded-t-xl last:rounded-b-xl border-b border-white/10 last:border-b-0"
                     >
                       <div className="flex items-center space-x-2">
-                        <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
@@ -455,14 +444,19 @@ export default function RegisterPage() {
 
           {/* E-mail */}
           <div>
-            <label className="block text-white font-semibold mb-2">
+            <label className="block text-white font-medium mb-2">
               E-mail *
             </label>
             <input
               type="email"
               value={formData.email}
               onChange={(e) => {
-                setFormData({ ...formData, email: e.target.value });
+                const email = e.target.value;
+                setFormData(prev => ({
+                  ...prev,
+                  email,
+                  username: !prev.username || prev.username === prev.email ? email : prev.username,
+                }));
                 if (fieldErrors.email) {
                   setFieldErrors(prev => {
                     const newErrors = { ...prev };
@@ -474,7 +468,7 @@ export default function RegisterPage() {
               className={`w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none ${
                 fieldErrors.email ? 'border-2 border-red-500 bg-red-500/10' : ''
               }`}
-              placeholder="email@example.com"
+              placeholder="vas@email.cz"
               required
             />
             {fieldErrors.email && (
@@ -487,23 +481,18 @@ export default function RegisterPage() {
             )}
           </div>
 
-          {/* Ligy */}
+          {/* Ligy - kompaktní chips */}
           <div>
-            <label className="block text-white font-semibold mb-2">
-              Sledované ligy * (vyberte alespoň jednu)
+            <label className="block text-white font-medium mb-2">
+              Liga týmu * (vyberte nebo zadejte)
             </label>
-            <div className={`space-y-3 p-3 rounded-lg ${
-              fieldErrors.leagues ? 'border-2 border-red-500 bg-red-500/10' : ''
-            }`}>
-              {PRE_DEFINED_LEAGUES.map((league) => (
-                <label
-                  key={league}
-                  className="flex items-center space-x-3 p-3 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={formData.leagues.includes(league)}
-                    onChange={() => {
+            <div className={`space-y-2 ${fieldErrors.leagues ? 'ring-2 ring-red-500/50 rounded-xl p-2' : ''}`}>
+              <div className="flex flex-wrap gap-2">
+                {PRE_DEFINED_LEAGUES.map((league) => (
+                  <button
+                    key={league}
+                    type="button"
+                    onClick={() => {
                       handleLeagueToggle(league);
                       if (fieldErrors.leagues) {
                         setFieldErrors(prev => {
@@ -513,55 +502,47 @@ export default function RegisterPage() {
                         });
                       }
                     }}
-                    className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-400"
-                  />
-                  <span className="text-white">{league}</span>
-                </label>
-              ))}
-              
-              {/* Input pro jinou ligu */}
-              <div className="mt-4">
-                <label className="block text-white/80 text-sm font-medium mb-2">
-                  Jiná liga
-                </label>
-                <input
-                  type="text"
-                  value={formData.otherLeague}
-                  onChange={(e) => {
-                    const newOtherLeague = e.target.value;
-                    const trimmedOtherLeague = newOtherLeague.trim();
-                    
-                    // Získáme aktuální předdefinované ligy
-                    const currentPreDefinedLeagues = formData.leagues.filter(l => PRE_DEFINED_LEAGUES.includes(l));
-                    
-                    // Pokud je zadaná jiná liga, přidáme ji do leagues
-                    if (trimmedOtherLeague) {
-                      setFormData(prev => ({
-                        ...prev,
-                        otherLeague: newOtherLeague,
-                        leagues: [...currentPreDefinedLeagues, trimmedOtherLeague]
-                      }));
-                    } else {
-                      // Pokud je input prázdný, odstraníme všechny ne-předdefinované ligy
-                      setFormData(prev => ({
-                        ...prev,
-                        otherLeague: newOtherLeague,
-                        leagues: currentPreDefinedLeagues
-                      }));
-                    }
-                    
-                    if (fieldErrors.leagues) {
-                      setFieldErrors(prev => {
-                        const newErrors = { ...prev };
-                        delete newErrors.leagues;
-                        return newErrors;
-                      });
-                    }
-                  }}
-                  className="w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none"
-                  placeholder="Zadejte název jiné ligy"
-                />
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                      formData.leagues.includes(league)
+                        ? 'bg-violet-500/30 text-white border border-violet-400/50'
+                        : 'bg-white/5 text-white/70 hover:bg-white/10 border border-white/10'
+                    }`}
+                  >
+                    {league}
+                  </button>
+                ))}
               </div>
+              <input
+                type="text"
+                value={formData.otherLeague}
+                onChange={(e) => {
+                  const newOtherLeague = e.target.value;
+                  const trimmedOtherLeague = newOtherLeague.trim();
+                  const currentPreDefinedLeagues = formData.leagues.filter(l => PRE_DEFINED_LEAGUES.includes(l));
+                  if (trimmedOtherLeague) {
+                    setFormData(prev => ({
+                      ...prev,
+                      otherLeague: newOtherLeague,
+                      leagues: [...currentPreDefinedLeagues, trimmedOtherLeague]
+                    }));
+                  } else {
+                    setFormData(prev => ({
+                      ...prev,
+                      otherLeague: newOtherLeague,
+                      leagues: currentPreDefinedLeagues
+                    }));
+                  }
+                  if (fieldErrors.leagues) {
+                    setFieldErrors(prev => {
+                      const newErrors = { ...prev };
+                      delete newErrors.leagues;
+                      return newErrors;
+                    });
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-lg glass-input text-white placeholder-white/40 text-sm focus:outline-none"
+                placeholder="Nebo zadejte jinou ligu"
+              />
             </div>
             {fieldErrors.leagues && (
               <p className="text-red-400 text-sm mt-1 flex items-center space-x-1">
@@ -573,9 +554,9 @@ export default function RegisterPage() {
             )}
           </div>
 
-          {/* Uživatelské jméno */}
+          {/* Uživatelské jméno - předvyplní se z e-mailu */}
           <div>
-            <label className="block text-white font-semibold mb-2">
+            <label className="block text-white font-medium mb-2">
               Přihlašovací jméno *
             </label>
             <input
@@ -594,7 +575,7 @@ export default function RegisterPage() {
               className={`w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none ${
                 fieldErrors.username ? 'border-2 border-red-500 bg-red-500/10' : ''
               }`}
-              placeholder="Vyberte si uživatelské jméno"
+              placeholder="Můžete použít e-mail"
               required
             />
             {fieldErrors.username && (
@@ -717,40 +698,60 @@ export default function RegisterPage() {
             )}
           </div>
 
-          {/* ID doporučujícího týmu */}
-          <div>
-            <label className="block text-white font-semibold mb-2">
-              ID doporučujícího týmu (volitelné)
-            </label>
-            <input
-              type="text"
-              value={formData.referrerId}
-              onChange={(e) => {
-                setFormData({ ...formData, referrerId: e.target.value });
-                if (fieldErrors.referrerId) {
-                  setFieldErrors(prev => {
-                    const newErrors = { ...prev };
-                    delete newErrors.referrerId;
-                    return newErrors;
-                  });
-                }
-              }}
-              className={`w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none ${
-                fieldErrors.referrerId ? 'border-2 border-red-500 bg-red-500/10' : ''
-              }`}
-              placeholder="Zadejte ID týmu, který vás doporučil"
-            />
-            {fieldErrors.referrerId && (
-              <p className="text-red-400 text-sm mt-1 flex items-center space-x-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>{fieldErrors.referrerId}</span>
-              </p>
+          {/* Volitelné - Logo a doporučující kód */}
+          <div className="border-t border-white/10 pt-5">
+            <button
+              type="button"
+              onClick={() => setShowOptional(!showOptional)}
+              className="text-zinc-400 hover:text-white text-sm font-medium flex items-center gap-2 transition-colors"
+            >
+              <svg className={`w-4 h-4 transition-transform ${showOptional ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              {showOptional ? 'Skrýt volitelné' : 'Logo a doporučující kód'}
+            </button>
+            {showOptional && (
+              <div className="mt-4 space-y-4 slide-in">
+                <div>
+                  <label className="block text-white/80 font-medium mb-2">Logo týmu</label>
+                  <div className="space-y-2">
+                    {logoPreview && (
+                      <img src={logoPreview} alt="Náhled" className="w-20 h-20 object-cover rounded-full border-2 border-white/20" />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoChange}
+                      className="w-full px-3 py-2 rounded-lg glass-input text-white file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-violet-600 file:text-white file:cursor-pointer text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-white/80 font-medium mb-2">Doporučující kód</label>
+                  <input
+                    type="text"
+                    value={formData.referrerId}
+                    onChange={(e) => {
+                      setFormData({ ...formData, referrerId: e.target.value });
+                      if (fieldErrors.referrerId) {
+                        setFieldErrors(prev => {
+                          const newErrors = { ...prev };
+                          delete newErrors.referrerId;
+                          return newErrors;
+                        });
+                      }
+                    }}
+                    className={`w-full px-4 py-2 rounded-lg glass-input text-white placeholder-white/40 text-sm ${
+                      fieldErrors.referrerId ? 'border-2 border-red-500 bg-red-500/10' : ''
+                    }`}
+                    placeholder="ID týmu, který vás doporučil"
+                  />
+                  {fieldErrors.referrerId && (
+                    <p className="text-red-400 text-xs mt-1">{fieldErrors.referrerId}</p>
+                  )}
+                </div>
+              </div>
             )}
-            <p className="text-white/60 text-sm mt-1">
-              Pokud vás doporučil jiný tým, zadejte jeho ID
-            </p>
           </div>
 
           {error && (
@@ -770,7 +771,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold text-lg rounded-2xl shadow-[0_0_25px_rgba(59,130,246,0.4)] transform transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_35px_rgba(59,130,246,0.6)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden flex items-center justify-center space-x-2"
+            className="w-full py-4 bg-violet-500 hover:bg-violet-600 text-white font-semibold text-lg rounded-2xl shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden flex items-center justify-center space-x-2"
           >
             {loading && <LoadingSpinner size="sm" />}
             <span className="relative z-10">{loading ? 'Registruji...' : 'Registrovat tým'}</span>

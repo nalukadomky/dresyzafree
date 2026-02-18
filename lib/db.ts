@@ -40,6 +40,7 @@ export interface Team {
   deliveryAddress?: string; // Adresa dodání dresů
   ico?: string; // IČO osoby/týmu
   meetingNote?: string; // Poznámka z jednání
+  jerseyType?: string; // Typ dresu
 }
 
 export interface Admin {

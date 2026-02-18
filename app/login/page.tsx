@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Přesměrování na správnou stránku podle parametru
   useEffect(() => {
     if (searchParams.get('admin') === 'true') {
       router.replace('/login/admin');
@@ -15,6 +14,7 @@ export default function LoginPage() {
       router.replace('/login/team');
     }
   }, [searchParams, router]);
+
   return (
     <div className="min-h-screen animated-background flex items-center justify-center">
       <div className="text-white text-center">
@@ -24,3 +24,16 @@ export default function LoginPage() {
   );
 }
 
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen animated-background flex items-center justify-center">
+        <div className="text-white text-center">
+          <p>Načítání...</p>
+        </div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
+  );
+}

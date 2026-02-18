@@ -1,0 +1,126 @@
+[
+  {
+    "teamName": "Sokol Luštěnice",
+    "contactPerson": "Lukáš",
+    "phone": "777555666",
+    "email": "lasak.design@gmail.com",
+    "leagues": [
+      "Česká fotbalová liga",
+      "2. fotbalová liga",
+      "Česká hokejová liga"
+    ],
+    "username": "Lukas1",
+    "password": "$2a$10$NO1M9wYN0tLVtotrjU3uOeAxCYPNhyHLQrQACPWqa56O.7gCgwBCW",
+    "id": "1769366874368",
+    "createdAt": "2026-01-25T18:47:54.368Z",
+    "tariffValidUntil": "2026-05-06T20:40:00.000Z",
+    "status": "nekontaktováno"
+  },
+  {
+    "teamName": "Luštěnice",
+    "contactPerson": "Lukáš",
+    "phone": "776288098",
+    "email": "lasak.design@gmail.com",
+    "leagues": [
+      "Česká fotbalová liga"
+    ],
+    "username": "luste.fotbal",
+    "password": "$2a$10$FOfOA8GsGhhgmlfoiijpXeuBmLt9VJjB/wiVkxh1fF10BP2Zw21AK",
+    "logo": "/teams/team-1769463337510-nftcj1wwrea.png",
+    "id": "1769463337685",
+    "createdAt": "2026-01-26T21:35:37.685Z",
+    "status": "nekontaktováno"
+  },
+  {
+    "teamName": "SK Jiřice",
+    "contactPerson": "Tomáš Novák",
+    "phone": "777666777",
+    "email": "lasak.design@gmail.com",
+    "leagues": [
+      "Česká hokejová liga"
+    ],
+    "username": "Jirice",
+    "password": "$2a$10$t0asKwF7c5TtMO.oClc5cuYTDsA8BrZbQRGKZvLMxoH2S9JMDMuTi",
+    "status": "nekontaktováno",
+    "id": "1769464124050",
+    "createdAt": "2026-01-26T21:48:44.050Z"
+  },
+  {
+    "teamName": "Kochánky",
+    "contactPerson": "Jan Novák",
+    "phone": "777666777",
+    "email": "lasak.design@gmail.com",
+    "leagues": [
+      "Česká fotbalová liga"
+    ],
+    "username": "Kochanky",
+    "password": "$2a$10$bJXscXgn4xuUSKvYZ1XCs.798Y4fNsm.j.cKfmChxaTkMrEHz8mW6",
+    "status": "nekontaktováno",
+    "referrerId": "1769464124050",
+    "id": "1769464428357",
+    "createdAt": "2026-01-26T21:53:48.357Z",
+    "numberOfJerseys": 15,
+    "numberOfTariffs": 13,
+    "tariffValidUntil": "2026-07-08T20:57:00.000Z",
+    "ico": "55667854"
+  },
+  {
+    "teamName": "AC Sparta Praha",
+    "contactPerson": "Tomáš Rosický",
+    "phone": "888777666",
+    "email": "lasak.design@gmail.com",
+    "leagues": [
+      "Česká fotbalová liga"
+    ],
+    "username": "Sparta",
+    "password": "$2a$10$NugSS3lemFEjsDJBccrrMO0qE0hwYDqHYKjS4xrjfU4sxNJE7Xq/W",
+    "logo": "/teams/team-1769469087212-auxxh63o5g.png",
+    "status": "nekontaktováno",
+    "referrerId": "1769464428357",
+    "id": "1769469087368",
+    "createdAt": "2026-01-26T23:11:27.368Z"
+  },
+  {
+    "teamName": "SK Sokol Praha",
+    "contactPerson": "Já",
+    "phone": "777555666",
+    "email": "jakoby@jakoby.cz",
+    "leagues": [
+      "Česká fotbalová liga"
+    ],
+    "username": "Jakoby",
+    "password": "$2a$10$IfCfee84TXiCKtLyyiHjDeKTE23s8eRkw/TlrpSRLvmpn5oUCQiUi",
+    "logo": "/teams/team-1770581927944-f397zfbgvug.png",
+    "status": "nekontaktováno",
+    "id": "1770581928498",
+    "createdAt": "2026-02-08T20:18:48.498Z"
+  },
+  {
+    "teamName": "Sokol",
+    "contactPerson": "Sokol",
+    "phone": "777666777",
+    "email": "sokol@sokol.cz",
+    "leagues": [
+      "Česká fotbalová liga"
+    ],
+    "username": "Sokol",
+    "password": "$2a$10$zADKhi4RTpg1bUEFPrE56.oc7WHR33S9EU13fccsnFsEzSdOzkrsS",
+    "status": "nekontaktováno",
+    "id": "1770584738560",
+    "createdAt": "2026-02-08T21:05:38.560Z"
+  },
+  {
+    "teamName": "Sokol",
+    "contactPerson": "Sokol",
+    "phone": "777666777",
+    "email": "sokol@sokol.cz",
+    "leagues": [
+      "Česká fotbalová liga"
+    ],
+    "username": "Sokol",
+    "password": "$2a$10$ZESOUpJMcrtv2AB47./3IekoI26md4m6.nn4dm7wFRGpyhMrdJ7vW",
+    "status": "nekontaktováno",
+    "id": "1770586100132",
+    "createdAt": "2026-02-08T21:28:20.132Z"
+  }
+]

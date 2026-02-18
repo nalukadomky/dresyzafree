@@ -15,6 +15,7 @@ interface Team {
   socksUrl?: string;
   deadline?: string;
   tariffValidUntil?: string;
+  backgroundColor?: string;
 }
 
 export default function DashboardPage() {
@@ -22,13 +23,14 @@ export default function DashboardPage() {
   const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [savingColor, setSavingColor] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     const teamId = localStorage.getItem('teamId');
 
     if (!token || !teamId) {
-      router.push('/login');
+      router.push('/login/team');
       return;
     }
 
@@ -48,7 +50,7 @@ export default function DashboardPage() {
           localStorage.removeItem('token');
           localStorage.removeItem('teamId');
           localStorage.removeItem('userType');
-          router.push('/login');
+          router.push('/login/team');
           return;
         }
         throw new Error('Chyba při načítání dat');
@@ -68,6 +70,32 @@ export default function DashboardPage() {
     localStorage.removeItem('teamId');
     localStorage.removeItem('userType');
     router.push('/');
+  };
+
+  const PRESET_COLORS = [
+    '#0f1419', '#1a1a2e', '#16213e', '#0f3460', '#1b2838',
+    '#2d1b4e', '#3d1f5c', '#1e3a5f', '#2c3e50', '#1a472a',
+    '#2d5016', '#4a3728', '#5c2a2a', '#2a2a5c', '#1a1a3a',
+  ];
+
+  const setTeamColor = async (color: string) => {
+    if (!team?.id) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    setSavingColor(true);
+    try {
+      const res = await fetch(`/api/teams/${team.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backgroundColor: color || null }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTeam(data.team);
+      }
+    } finally {
+      setSavingColor(false);
+    }
   };
 
   if (loading) {
@@ -99,7 +127,7 @@ export default function DashboardPage() {
               localStorage.removeItem('userType');
               router.push('/login/team');
             }}
-            className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-all duration-300"
+            className="w-full px-6 py-3 bg-violet-500 hover:bg-violet-600 text-white font-semibold rounded-xl transition-all duration-300"
           >
             Zpět na přihlášení
           </button>
@@ -108,12 +136,14 @@ export default function DashboardPage() {
     );
   }
 
+  const bgStyle = team?.backgroundColor ? { background: team.backgroundColor } : undefined;
+
   return (
-    <div className="min-h-screen animated-background py-12 px-4">
+    <div className="min-h-screen animated-background py-12 px-4" style={bgStyle}>
       {/* Tlačítko zpět */}
       <Link
         href="/"
-        className="fixed top-4 left-4 px-4 py-2 glass-card text-white rounded-xl border border-white/20 transition-all duration-300 hover:scale-105 hover:border-white/40 flex items-center space-x-2 z-10 shadow-lg"
+        className="fixed top-4 left-4 px-4 py-2.5 glass-card text-white/90 rounded-xl border border-white/10 transition-all duration-200 hover:bg-white/5 hover:text-white flex items-center gap-2 z-10"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -153,6 +183,24 @@ export default function DashboardPage() {
           </button>
         </div>
 
+        {/* Hodnocení hráčů */}
+        <div className="glass-card rounded-2xl p-6 sm:p-8 mb-6 fade-in-up">
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Hodnocení hráčů</h2>
+          <p className="text-white/70 mb-4">
+            Přidejte hráče, zaznamenávejte zápasy a po každém zápase nechte hráče ohodnotit své spoluhráče v procentech.
+            Zaznamenávejte tréninky, evidujte účast a sledujte srovnání účasti na tréninzích s výkonností v zápasech.
+          </p>
+          <Link
+            href="/dashboard/hodnoceni-hracu"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-violet-500 hover:bg-violet-600 text-white rounded-xl font-medium transition-all"
+          >
+            Hodnocení zápasů a tréninků
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        </div>
+
         {/* Časovač - Dodání dresů */}
         {team?.deadline && (
           <div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up">
@@ -176,11 +224,42 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Barva pozadí */}
+        <div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up">
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Barva pozadí</h2>
+          <p className="text-white/70 mb-4">Vyberte unikátní barvu pozadí pro váš tým.</p>
+          <div className="flex flex-wrap gap-2">
+            {PRESET_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setTeamColor(c)}
+                disabled={savingColor}
+                className={`w-10 h-10 rounded-xl border-2 transition-all hover:scale-110 ${
+                  team?.backgroundColor === c ? 'border-white ring-2 ring-white/50' : 'border-white/20 hover:border-white/40'
+                }`}
+                style={{ background: c }}
+                title={c}
+                aria-label={`Nastavit barvu ${c}`}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => setTeamColor('')}
+              disabled={savingColor}
+              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-medium border border-white/20"
+            >
+              Výchozí
+            </button>
+          </div>
+          {savingColor && <p className="text-white/50 text-sm mt-2">Ukládám...</p>}
+        </div>
+
         {/* Doporučit klub */}
         <div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up">
           <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Doporučit klub</h2>
           <div className="space-y-4">
-            <div className="bg-blue-600/20 border border-blue-400/30 rounded-lg p-4">
+            <div className="bg-violet-600/20 border border-violet-400/30 rounded-lg p-4">
               <p className="text-white/90 mb-2">
                 <strong className="text-white">Jak doporučit klub:</strong>
               </p>
@@ -216,7 +295,7 @@ export default function DashboardPage() {
                     }
                   }
                 }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-300 font-semibold hover:scale-105"
+                className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-all duration-300 font-semibold hover:scale-105"
               >
                 Kopírovat ID
               </button>
@@ -235,7 +314,7 @@ export default function DashboardPage() {
                   href={team.jerseyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-400 hover:text-blue-300 underline break-all"
+                  className="text-violet-400 hover:text-violet-300 underline break-all"
                 >
                   {team.jerseyUrl}
                 </a>
@@ -254,7 +333,7 @@ export default function DashboardPage() {
                   href={team.shortsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-400 hover:text-blue-300 underline break-all"
+                  className="text-violet-400 hover:text-violet-300 underline break-all"
                 >
                   {team.shortsUrl}
                 </a>
@@ -273,7 +352,7 @@ export default function DashboardPage() {
                   href={team.socksUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-400 hover:text-blue-300 underline break-all"
+                  className="text-violet-400 hover:text-violet-300 underline break-all"
                 >
                   {team.socksUrl}
                 </a>

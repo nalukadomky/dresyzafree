@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { db as fileDb } from './db';
+import { supabaseAdmin } from './supabase-server';
 
 export interface Team {
   id: string;
@@ -24,6 +24,8 @@ export interface Team {
   deliveryAddress?: string;
   ico?: string;
   meetingNote?: string;
+  jerseyType?: string;
+  backgroundColor?: string;
 }
 
 export interface Admin {
@@ -62,6 +64,8 @@ const columnMapping: Record<string, string> = {
   'socksUrl': 'socksurl',
   'deliveryAddress': 'deliveryaddress',
   'meetingNote': 'meetingnote',
+  'jerseyType': 'jerseytype',
+  'backgroundColor': 'background_color',
 };
 
 const reverseColumnMapping: Record<string, string> = Object.fromEntries(
@@ -80,30 +84,27 @@ function teamToSupabase(team: Partial<Team>): any {
   return result;
 }
 
-// Převod objektu z Supabase (lowercase) na Team (camelCase)
+function snakeToCamel(str: string): string {
+  return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+// Převod objektu z Supabase (lowercase/snake_case) na Team (camelCase)
 function supabaseToTeam(data: any): Team {
   const result: any = {};
   for (const [key, value] of Object.entries(data)) {
-    const camelKey = reverseColumnMapping[key] || key;
+    const camelKey = reverseColumnMapping[key] || (key.includes('_') ? snakeToCamel(key) : key);
     result[camelKey] = value;
   }
   return result as Team;
 }
 
-// Používáme pouze Supabase - žádný fallback na JSON
-const useSupabase = supabase !== null;
-
-if (!useSupabase) {
+if (!supabase) {
   throw new Error('Supabase není nakonfigurován! Nastavte NEXT_PUBLIC_SUPABASE_URL a NEXT_PUBLIC_SUPABASE_ANON_KEY v .env.local');
 }
 
 export const db = {
   teams: {
     getAll: async (): Promise<Team[]> => {
-      if (!useSupabase) {
-        throw new Error('Supabase není nakonfigurován!');
-      }
-
       try {
         const { data, error } = await supabase!
           .from('teams')
@@ -124,10 +125,6 @@ export const db = {
     },
 
     getById: async (id: string): Promise<Team | undefined> => {
-      if (!useSupabase) {
-        throw new Error('Supabase není nakonfigurován!');
-      }
-
       try {
         const { data, error } = await supabase!
           .from('teams')
@@ -152,10 +149,6 @@ export const db = {
     },
 
     getByUsername: async (username: string): Promise<Team | undefined> => {
-      if (!useSupabase) {
-        throw new Error('Supabase není nakonfigurován!');
-      }
-
       try {
         const { data, error } = await supabase!
           .from('teams')
@@ -180,34 +173,27 @@ export const db = {
     },
 
     getByUsernameOrEmail: async (identifier: string): Promise<Team | undefined> => {
-      if (!useSupabase) {
-        throw new Error('Supabase není nakonfigurován!');
-      }
-
       try {
-        // Zkusíme najít podle username
-        const { data: usernameData, error: usernameError } = await supabase!
+        const trimmed = identifier.trim();
+        if (!trimmed) return undefined;
+
+        const client = supabaseAdmin ?? supabase!;
+        const { data: usernameData, error: usernameError } = await client
           .from('teams')
           .select('*')
-          .eq('username', identifier)
-          .single();
+          .eq('username', trimmed)
+          .maybeSingle();
 
-        if (!usernameError && usernameData) {
-          return supabaseToTeam(usernameData);
-        }
+        if (!usernameError && usernameData) return supabaseToTeam(usernameData);
 
-        // Pokud ne, zkusíme najít podle email
-        const { data: emailData, error: emailError } = await supabase!
+        const { data: emailData, error: emailError } = await client
           .from('teams')
           .select('*')
-          .eq('email', identifier)
-          .single();
+          .eq('email', trimmed)
+          .maybeSingle();
 
-        if (!emailError && emailData) {
-          return supabaseToTeam(emailData);
-        }
+        if (!emailError && emailData) return supabaseToTeam(emailData);
 
-        // Pokud ani jedno nefunguje, vrátíme undefined
         return undefined;
       } catch (error: any) {
         console.error('Error fetching team by username or email:', error);
@@ -216,10 +202,6 @@ export const db = {
     },
 
     create: async (team: Omit<Team, 'id' | 'createdAt'>): Promise<Team> => {
-      if (!useSupabase) {
-        throw new Error('Supabase není nakonfigurován!');
-      }
-
       try {
         const newTeam: Team = {
           ...team,
@@ -227,10 +209,7 @@ export const db = {
           createdAt: new Date().toISOString(),
         };
 
-        // Převod na snake_case pro Supabase
         const teamToInsert = teamToSupabase(newTeam);
-
-        console.log('Ukládám tým do Supabase (snake_case):', JSON.stringify(teamToInsert, null, 2));
 
         const { data, error } = await supabase!
           .from('teams')
@@ -240,11 +219,8 @@ export const db = {
 
         if (error) {
           console.error('Error creating team in Supabase:', error);
-          console.error('Error details:', JSON.stringify(error, null, 2));
           throw new Error(`Chyba při ukládání týmu do Supabase: ${error.message}`);
         }
-
-        console.log('✅ Tým úspěšně uložen do Supabase');
         // Převod zpět na camelCase
         return supabaseToTeam(data);
       } catch (error: any) {
@@ -254,12 +230,7 @@ export const db = {
     },
 
     update: async (id: string, updates: Partial<Team>): Promise<Team | null> => {
-      if (!useSupabase) {
-        throw new Error('Supabase není nakonfigurován!');
-      }
-
       try {
-        // Převod updates na snake_case
         const updatesSnake = teamToSupabase(updates);
 
         const { data, error } = await supabase!
@@ -282,10 +253,6 @@ export const db = {
     },
 
     delete: async (id: string): Promise<boolean> => {
-      if (!useSupabase) {
-        throw new Error('Supabase není nakonfigurován!');
-      }
-
       try {
         const { error } = await supabase!
           .from('teams')
@@ -307,10 +274,6 @@ export const db = {
 
   admin: {
     get: async (): Promise<Admin> => {
-      if (!useSupabase) {
-        throw new Error('Supabase není nakonfigurován!');
-      }
-
       try {
         const { data, error } = await supabase!
           .from('admin')
@@ -334,10 +297,6 @@ export const db = {
     },
 
     update: async (admin: Admin): Promise<void> => {
-      if (!useSupabase) {
-        throw new Error('Supabase není nakonfigurován!');
-      }
-
       try {
         const { error } = await supabase!
           .from('admin')

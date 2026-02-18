@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
+import { supabaseAdmin } from '@/lib/supabase-server';
+
+const BUCKET_NAME = 'team-logos';
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,28 +33,57 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Vytvoření unikátního názvu souboru
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(2, 15);
     const fileExtension = file.name.split('.').pop() || 'png';
     const fileName = `team-${timestamp}-${randomString}.${fileExtension}`;
 
-    // Cesta k uložení
+    // Supabase Storage (funguje na Vercelu)
+    if (supabaseAdmin) {
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+
+      let uploadResult = await supabaseAdmin.storage
+        .from(BUCKET_NAME)
+        .upload(fileName, buffer, {
+          contentType: file.type,
+          upsert: false,
+        });
+
+      // Pokud bucket neexistuje, zkusíme ho vytvořit a znovu nahrát
+      if (uploadResult.error?.message?.includes('Bucket') || uploadResult.error?.message?.includes('not found')) {
+        await supabaseAdmin.storage.createBucket(BUCKET_NAME, { public: true });
+        uploadResult = await supabaseAdmin.storage
+          .from(BUCKET_NAME)
+          .upload(fileName, buffer, {
+            contentType: file.type,
+            upsert: false,
+          });
+      }
+
+      if (uploadResult.error) {
+        console.error('Supabase Storage upload error:', uploadResult.error);
+        return NextResponse.json(
+          { error: uploadResult.error.message || 'Chyba při nahrávání do úložiště' },
+          { status: 500 }
+        );
+      }
+
+      const { data: urlData } = supabaseAdmin.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(uploadResult.data.path);
+
+      return NextResponse.json({ logoPath: urlData.publicUrl });
+    }
+
+    // Fallback: lokální souborový systém (pouze pro vývoj)
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
     const uploadDir = path.join(process.cwd(), 'public', 'teams');
     const filePath = path.join(uploadDir, fileName);
-
-    // Vytvoření složky, pokud neexistuje
     await mkdir(uploadDir, { recursive: true });
-
-    // Uložení souboru
     await writeFile(filePath, buffer);
-
-    // Vrácení cesty k souboru (relativní k public složce)
-    const logoPath = `/teams/${fileName}`;
-
-    return NextResponse.json({ logoPath });
+    return NextResponse.json({ logoPath: `/teams/${fileName}` });
   } catch (error) {
     console.error('Upload error:', error);
     return NextResponse.json(
