@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import TacticsBoard from '@/components/TacticsBoard';
 
 interface Player {
   id: string;
@@ -1903,11 +1904,14 @@ function HodnoceniHracuContent() {
         )}
 
         {tab === 'taktika' && (
-          <div className="space-y-4 sm:space-y-6">
-            <div className="glass-card rounded-2xl p-4 sm:p-6">
-              <h2 className="text-base sm:text-lg font-semibold text-white mb-3">Taktika</h2>
-              <p className="text-white/60 text-sm">Obsah záložky Taktika.</p>
+          <div className="space-y-3 sm:space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base sm:text-lg font-semibold text-white">Taktické schéma</h2>
+              <p className="text-white/50 text-xs sm:text-sm">
+                Přetáhněte hráče na hřiště (max 11). Tužka: kreslení v zelené, červené nebo tmavě žluté.
+              </p>
             </div>
+            <TacticsBoard players={players.map((p) => ({ id: p.id, name: p.name }))} />
           </div>
         )}
 
