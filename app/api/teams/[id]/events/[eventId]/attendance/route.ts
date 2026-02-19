@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/middleware';
-import { dbEvents } from '@/lib/db-events';
+import { dbEvents, canEditDashboardAttendance, isAttendanceFinalized } from '@/lib/db-events';
 
 export async function PATCH(
   request: NextRequest,
@@ -18,6 +18,18 @@ export async function PATCH(
     if (!event) {
       return NextResponse.json({ error: 'Událost nenalezena' }, { status: 404 });
     }
+    if (isAttendanceFinalized(event)) {
+      return NextResponse.json(
+        { error: 'Docházka byla již odeslána a nelze ji měnit.' },
+        { status: 403 }
+      );
+    }
+    if (!canEditDashboardAttendance(event)) {
+      return NextResponse.json(
+        { error: 'Docházku lze zadat až 15 minut před začátkem události.' },
+        { status: 403 }
+      );
+    }
     const { attendance } = await request.json();
     if (!Array.isArray(attendance)) {
       return NextResponse.json({ error: 'Neplatný formát' }, { status: 400 });
@@ -34,8 +46,13 @@ export async function PATCH(
     }
     await dbEvents.attendance.setBulkExact(
       params.eventId,
-      attendance.map((a) => ({ playerId: a.playerId, attended: a.attended }))
+      attendance.map((a) => ({
+        playerId: a.playerId,
+        attended: a.attended,
+        absenceReason: a.absenceReason,
+      }))
     );
+    await dbEvents.events.finalizeAttendance(params.eventId, params.id);
     const updated = await dbEvents.attendance.getByEventId(params.eventId);
     return NextResponse.json({ attendance: updated });
   } catch (error: unknown) {

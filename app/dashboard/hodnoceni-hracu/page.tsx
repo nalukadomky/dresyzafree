@@ -21,6 +21,8 @@ interface Match {
   goalsFor?: number;
   goalsAgainst?: number;
   startTime?: string;
+  /** Z hodnocení spoluhráčů a trenéra (nejvyšší průměr) */
+  playerOfMatch?: { playerId: string; playerName: string } | null;
 }
 
 interface LeaderboardEntry {
@@ -41,6 +43,8 @@ interface Event {
   opponent?: string;
   startTime?: string;
   note?: string;
+  shareToken?: string;
+  attendanceClosed?: boolean;
 }
 
 interface AttendanceStat {
@@ -52,7 +56,15 @@ interface AttendanceStat {
   matchCount: number;
 }
 
-type Tab = 'dashboard' | 'manage' | 'vote' | 'leaderboard' | 'calendar';
+type Tab = 'dashboard' | 'manage' | 'vote' | 'leaderboard' | 'canadian' | 'calendar' | 'taktika';
+
+interface CanadianEntry {
+  playerId: string;
+  playerName: string;
+  goals: number;
+  assists: number;
+  total: number;
+}
 
 function getSeasonFromDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -76,6 +88,7 @@ function MatchResultEdit({
   token,
   teamLabel,
   opponentLabel,
+  playerOfMatch,
   onUpdated,
 }: {
   match: Match;
@@ -83,6 +96,7 @@ function MatchResultEdit({
   token: string;
   teamLabel: string;
   opponentLabel: string;
+  playerOfMatch?: { playerId: string; playerName: string } | null;
   onUpdated: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -93,22 +107,30 @@ function MatchResultEdit({
   const saveRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   const save = async () => {
-    const gf = goalsFor === '' ? undefined : Number(goalsFor);
-    const ga = goalsAgainst === '' ? undefined : Number(goalsAgainst);
-    if ((gf == null && ga == null) && (match.goalsFor == null && match.goalsAgainst == null)) {
+    const gfRaw = goalsFor === '' ? undefined : Number(goalsFor);
+    const gaRaw = goalsAgainst === '' ? undefined : Number(goalsAgainst);
+    const gf = gfRaw != null && !Number.isNaN(gfRaw) ? Math.round(gfRaw) : undefined;
+    const ga = gaRaw != null && !Number.isNaN(gaRaw) ? Math.round(gaRaw) : undefined;
+    if (gf == null && ga == null && (match.goalsFor == null && match.goalsAgainst == null)) {
       setEditing(false);
       return;
     }
     setSaving(true);
     try {
+      const body: { goalsFor?: number; goalsAgainst?: number } = {};
+      if (gf != null) body.goalsFor = gf;
+      if (ga != null) body.goalsAgainst = ga;
       const res = await fetch(`/api/teams/${teamId}/matches/${match.id}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ goalsFor: gf, goalsAgainst: ga }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         onUpdated();
         setEditing(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err?.error || `Chyba při ukládání (${res.status})`);
       }
     } finally {
       setSaving(false);
@@ -180,14 +202,21 @@ function MatchResultEdit({
   const scoreShort = hasScore ? `${match.goalsFor} : ${match.goalsAgainst}` : null;
   const scoreFull = formatMatchScore(match, teamLabel, opponentLabel);
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      className="text-violet-400 hover:text-violet-300 text-sm px-3 py-1 rounded hover:bg-white/5"
-      title={scoreFull ? `${scoreFull} – upravit` : 'Přidat skóre'}
-    >
-      {scoreShort ?? 'Přidat skóre'}
-    </button>
+    <span className="flex items-center gap-2 flex-wrap">
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="text-violet-400 hover:text-violet-300 text-sm px-3 py-1 rounded hover:bg-white/5"
+        title={scoreFull ? `${scoreFull} – upravit` : 'Přidat skóre'}
+      >
+        {scoreShort ?? 'Přidat skóre'}
+      </button>
+      {playerOfMatch && (
+        <span className="text-amber-400 text-sm" title="Hráč utkání (z hodnocení spoluhráčů a trenéra)">
+          ⭐ {playerOfMatch.playerName}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -219,13 +248,15 @@ function HodnoceniHracuContent() {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>(
-    tabParam === 'dashboard' || tabParam === 'calendar' || tabParam === 'vote' || tabParam === 'leaderboard'
-      ? tabParam
+    tabParam === 'dashboard' || tabParam === 'calendar' || tabParam === 'vote' || tabParam === 'leaderboard' || tabParam === 'canadian' || tabParam === 'taktika'
+      ? tabParam as Tab
       : 'dashboard'
   );
 
   const [teamName, setTeamName] = useState('');
   const [teamBackgroundColor, setTeamBackgroundColor] = useState<string | undefined>();
+  const [coachPlayerId, setCoachPlayerId] = useState<string | null>(null);
+  const [savingCoach, setSavingCoach] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -242,13 +273,25 @@ function HodnoceniHracuContent() {
   const [scores, setScores] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [showVoteValidation, setShowVoteValidation] = useState(false);
+  const [hasVoted, setHasVoted] = useState<boolean | null>(null);
+  const [voteSubmittedSuccess, setVoteSubmittedSuccess] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ playerId: string; playerName: string } | null>(null);
   const [deleteFeedback, setDeleteFeedback] = useState<string | null>(null);
   const [matchesSeason, setMatchesSeason] = useState<string | null>(null);
+  const [leaderboardFilter, setLeaderboardFilter] = useState<string>('');
+  const [canadianStats, setCanadianStats] = useState<CanadianEntry[]>([]);
+  const [canadianFilter, setCanadianFilter] = useState<string>('');
+  const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
+  const [matchScorersData, setMatchScorersData] = useState<Record<string, { scorers: { goalOrder: number; playerId: string }[]; assists: { assistOrder: number; playerId: string }[] }>>({});
+  const [playersListExpanded, setPlayersListExpanded] = useState(false);
+  const newPlayerInputRef = useRef<HTMLInputElement>(null);
+  const [matchScorersSaving, setMatchScorersSaving] = useState<string | null>(null);
 
   const [events, setEvents] = useState<Event[]>([]);
   const [attendanceModal, setAttendanceModal] = useState<Event | null>(null);
-  const [attendanceData, setAttendanceData] = useState<{ playerId: string; attended: boolean }[]>([]);
+  const [attendanceModalClosed, setAttendanceModalClosed] = useState(false);
+  const [attendanceModalFinalized, setAttendanceModalFinalized] = useState(false);
+  const [attendanceData, setAttendanceData] = useState<{ playerId: string; attended: boolean; absenceReason?: string }[]>([]);
   const [attendanceSaving, setAttendanceSaving] = useState(false);
   const [newEventDate, setNewEventDate] = useState('');
   const [newEventStartTime, setNewEventStartTime] = useState('');
@@ -260,6 +303,8 @@ function HodnoceniHracuContent() {
   const [attendanceStats, setAttendanceStats] = useState<AttendanceStat[]>([]);
   const [showPastEvents, setShowPastEvents] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(null);
+  const [createdEventLink, setCreatedEventLink] = useState<string | null>(null);
+  const [eventAttendanceSummary, setEventAttendanceSummary] = useState<Record<string, { attended: number; notAttended: number; noResponse: number }>>({});
 
   const headers = () => ({
     Authorization: `Bearer ${token}`,
@@ -284,14 +329,13 @@ function HodnoceniHracuContent() {
 
   useEffect(() => {
     const t = searchParams.get('tab');
-    if (t === 'dashboard' || t === 'calendar' || t === 'vote' || t === 'leaderboard') setTab(t as Tab);
+    if (t === 'dashboard' || t === 'calendar' || t === 'vote' || t === 'leaderboard' || t === 'canadian' || t === 'taktika') setTab(t as Tab);
   }, [searchParams]);
 
   useEffect(() => {
     if (!teamId || !token) return;
     fetchPlayers();
     fetchMatches();
-    fetchLeaderboard();
     fetchEvents();
     fetch(`/api/teams/${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.ok && r.json())
@@ -299,10 +343,29 @@ function HodnoceniHracuContent() {
         if (d?.team) {
           if (d.team.teamName) setTeamName(d.team.teamName);
           setTeamBackgroundColor(d.team.backgroundColor);
+          setCoachPlayerId(d.team.coachPlayerId ?? null);
         }
       })
       .catch(() => {});
   }, [teamId, token]);
+
+  useEffect(() => {
+    if (!teamId || !token) return;
+    fetchLeaderboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamId, token, leaderboardFilter]);
+
+  useEffect(() => {
+    if ((tab !== 'canadian' || !teamId || !token)) return;
+    const params = new URLSearchParams();
+    if (canadianFilter.startsWith('season:')) params.set('season', canadianFilter.slice(7));
+    fetch(`/api/teams/${teamId}/canadian-scoring${params.toString() ? `?${params}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d) => setCanadianStats(d.stats || []))
+      .catch(() => setCanadianStats([]));
+  }, [tab, teamId, token, canadianFilter]);
 
   useEffect(() => {
     if ((tab === 'dashboard' || tab === 'calendar') && teamId && token) {
@@ -311,6 +374,19 @@ function HodnoceniHracuContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, teamId, token]);
+
+  useEffect(() => {
+    if (!teamId || !token || events.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const upcomingIds = events.filter((e) => e.date >= today).slice(0, 10).map((e) => e.id);
+    if (upcomingIds.length === 0) return;
+    fetch(`/api/teams/${teamId}/events-attendance-summary?ids=${upcomingIds.join(',')}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d) => setEventAttendanceSummary(d.summary || {}))
+      .catch(() => {});
+  }, [teamId, token, events]);
 
   const fetchPlayers = async () => {
     if (!teamId || !token) return;
@@ -332,7 +408,14 @@ function HodnoceniHracuContent() {
 
   const fetchLeaderboard = async () => {
     if (!teamId || !token) return;
-    const res = await fetch(`/api/teams/${teamId}/ratings`, { headers: { Authorization: `Bearer ${token}` } });
+    const params = new URLSearchParams();
+    if (leaderboardFilter.startsWith('season:')) {
+      params.set('season', leaderboardFilter.slice(7));
+    } else if (leaderboardFilter.startsWith('match:')) {
+      params.set('matchId', leaderboardFilter.slice(6));
+    }
+    const qs = params.toString();
+    const res = await fetch(`/api/teams/${teamId}/ratings${qs ? `?${qs}` : ''}`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
       const data = await res.json();
       setLeaderboard(data.leaderboard);
@@ -360,6 +443,20 @@ function HodnoceniHracuContent() {
     }
   };
 
+  const fetchEventAttendanceSummary = async () => {
+    if (!teamId || !token || events.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const upcomingIds = events.filter((e) => e.date >= today).slice(0, 10).map((e) => e.id);
+    if (upcomingIds.length === 0) return;
+    const res = await fetch(`/api/teams/${teamId}/events-attendance-summary?ids=${upcomingIds.join(',')}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setEventAttendanceSummary(data.summary || {});
+    }
+  };
+
   const addEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEventDate || !teamId || !token) return;
@@ -378,6 +475,12 @@ function HodnoceniHracuContent() {
         }),
       });
       if (res.ok) {
+        const data = await res.json();
+        const base = typeof window !== 'undefined' ? window.location.origin : '';
+        if (data.event?.shareToken) {
+          setCreatedEventLink(`${base}/udalost/${data.event.shareToken}`);
+          setTimeout(() => setCreatedEventLink(null), 15000);
+        }
         setNewEventDate('');
         setNewEventStartTime('');
         setNewEventLocation('');
@@ -404,31 +507,46 @@ function HodnoceniHracuContent() {
 
   const openAttendanceModal = async (ev: Event) => {
     setAttendanceModal(ev);
+    setAttendanceModalClosed(false);
+    setAttendanceModalFinalized(false);
     const res = await fetch(`/api/teams/${teamId}/events/${ev.id}`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
       const data = await res.json();
-      const current = (data.attendance || []) as { playerId: string; attended: boolean }[];
-      const byPlayer = Object.fromEntries(current.map((a) => [a.playerId, a.attended]));
+      setAttendanceModalClosed(data.event?.attendanceClosed ?? false);
+      setAttendanceModalFinalized(data.event?.attendanceFinalized ?? false);
+      const current = (data.attendance || []) as { playerId: string; attended: boolean; absenceReason?: string }[];
+      const byPlayer = Object.fromEntries(current.map((a) => [a.playerId, a]));
       setAttendanceData(
-        players.map((p) => ({ playerId: p.id, attended: byPlayer[p.id] ?? false }))
+        players.map((p) => {
+          const a = byPlayer[p.id];
+          return { playerId: p.id, attended: a?.attended ?? false, absenceReason: a?.absenceReason };
+        })
       );
     } else {
-      setAttendanceData(players.map((p) => ({ playerId: p.id, attended: false })));
+      setAttendanceData(players.map((p) => ({ playerId: p.id, attended: false, absenceReason: undefined })));
     }
   };
 
   const saveAttendance = async () => {
     if (!attendanceModal || !teamId || !token) return;
+    if (!confirm('Finálně odeslat docházku? Zakliknutí hráči skutečně přišli. Po odeslání již nelze měnit.')) return;
     setAttendanceSaving(true);
     try {
       const res = await fetch(`/api/teams/${teamId}/events/${attendanceModal.id}/attendance`, {
         method: 'PATCH',
         headers: headers(),
-        body: JSON.stringify({ attendance: attendanceData }),
+        body: JSON.stringify({
+          attendance: attendanceData.map((a) => ({
+            playerId: a.playerId,
+            attended: a.attended,
+            absenceReason: a.attended ? undefined : a.absenceReason,
+          })),
+        }),
       });
       if (res.ok) {
         setAttendanceModal(null);
         fetchAttendanceStats();
+        fetchEventAttendanceSummary();
       } else {
         const d = await res.json();
         alert(d.error || 'Chyba');
@@ -440,7 +558,11 @@ function HodnoceniHracuContent() {
 
   const toggleAttendance = (playerId: string) => {
     setAttendanceData((prev) =>
-      prev.map((a) => (a.playerId === playerId ? { ...a, attended: !a.attended } : a))
+      prev.map((a) =>
+        a.playerId === playerId
+          ? { ...a, attended: !a.attended, absenceReason: a.attended ? undefined : a.absenceReason }
+          : a
+      )
     );
   };
 
@@ -478,6 +600,27 @@ function HodnoceniHracuContent() {
     }
   };
 
+  const setCoach = async (playerId: string | null) => {
+    if (!teamId || !token) return;
+    setSavingCoach(true);
+    try {
+      const res = await fetch(`/api/teams/${teamId}`, {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify({ coachPlayerId: playerId || null }),
+      });
+      if (res.ok) {
+        setCoachPlayerId(playerId);
+        await fetchLeaderboard();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || 'Chyba při aktualizaci');
+      }
+    } finally {
+      setSavingCoach(false);
+    }
+  };
+
   const deletePlayer = (playerId: string, playerName: string) => {
     setDeleteConfirm({ playerId, playerName });
   };
@@ -489,6 +632,13 @@ function HodnoceniHracuContent() {
     const res = await fetch(`/api/teams/${teamId}/players/${playerId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
       await fetchPlayers();
+      if (playerId === coachPlayerId) {
+        setCoachPlayerId(null);
+        fetch(`/api/teams/${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
+          .then((r) => r.ok && r.json())
+          .then((d) => d?.team && setCoachPlayerId(d.team.coachPlayerId ?? null))
+          .catch(() => {});
+      }
       setDeleteFeedback('success:Hráč byl odstraněn.');
       setTimeout(() => setDeleteFeedback(null), 3000);
     } else {
@@ -499,7 +649,10 @@ function HodnoceniHracuContent() {
 
   const addMatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMatchDate || !teamId || !token) return;
+    if (!newMatchDate || !teamId || !token) {
+      alert('Chybí datum nebo nejste přihlášeni.');
+      return;
+    }
     setAddingMatch(true);
     try {
       const res = await fetch(`/api/teams/${teamId}/matches`, {
@@ -511,15 +664,21 @@ function HodnoceniHracuContent() {
           startTime: newMatchStartTime.trim() || undefined,
         }),
       });
+      const d = await res.json().catch(() => ({}));
       if (res.ok) {
         setNewMatchDate('');
         setNewMatchStartTime('');
         setNewMatchOpponent('');
         await fetchMatches();
       } else {
-        const d = await res.json();
-        alert(d.error || 'Chyba');
+        let msg = d.error || `Chyba (${res.status})`;
+        if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('tabulk')) {
+          msg += '\n\nMožná chybí tabulka matches. Spusťte v Supabase SQL Editoru skript scripts/setup-player-voting.sql';
+        }
+        alert(msg);
       }
+    } catch (err) {
+      alert('Chyba při odesílání: ' + (err instanceof Error ? err.message : 'Neznámá chyba'));
     } finally {
       setAddingMatch(false);
     }
@@ -528,10 +687,107 @@ function HodnoceniHracuContent() {
   const deleteMatch = async (matchId: string) => {
     if (!confirm('Opravdu smazat zápas?')) return;
     const res = await fetch(`/api/teams/${teamId}/matches/${matchId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) await fetchMatches();
+    if (res.ok) {
+      setExpandedMatchId((prev) => (prev === matchId ? null : prev));
+      await fetchMatches();
+    }
+  };
+
+  const toggleMatchExpand = async (m: Match) => {
+    if (expandedMatchId === m.id) {
+      setExpandedMatchId(null);
+      return;
+    }
+    const goalsCount = m.goalsFor ?? 0;
+    if (!matchScorersData[m.id]) {
+      const emptyScorers = Array.from({ length: goalsCount }, (_, i) => ({ goalOrder: i + 1, playerId: '' }));
+      const emptyAssists = Array.from({ length: goalsCount }, (_, i) => ({ assistOrder: i + 1, playerId: '' }));
+      setMatchScorersData((prev) => ({ ...prev, [m.id]: { scorers: emptyScorers, assists: emptyAssists } }));
+      const res = await fetch(`/api/teams/${teamId}/matches/${m.id}/scorers`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const d = await res.json();
+        const scorers = (d.scorers || []).map((s: { goalOrder: number; playerId: string }) => ({ goalOrder: s.goalOrder, playerId: s.playerId }));
+        const assists = (d.assists || []).map((a: { assistOrder: number; playerId: string }) => ({ assistOrder: a.assistOrder, playerId: a.playerId }));
+        const mergedScorers = Array.from({ length: goalsCount }, (_, i) => ({
+          goalOrder: i + 1,
+          playerId: scorers.find((s: { goalOrder: number }) => s.goalOrder === i + 1)?.playerId ?? '',
+        }));
+        const mergedAssists = Array.from({ length: goalsCount }, (_, i) => ({
+          assistOrder: i + 1,
+          playerId: assists.find((a: { assistOrder: number }) => a.assistOrder === i + 1)?.playerId ?? '',
+        }));
+        setMatchScorersData((prev) => ({ ...prev, [m.id]: { scorers: mergedScorers, assists: mergedAssists } }));
+      }
+    }
+    if (matchScorersData[m.id] && goalsCount > 0 && matchScorersData[m.id].scorers.length < goalsCount) {
+      setMatchScorersData((prev) => {
+        const data = prev[m.id];
+        const scorers = [...data.scorers];
+        const assists = [...data.assists];
+        while (scorers.length < goalsCount) scorers.push({ goalOrder: scorers.length + 1, playerId: '' });
+        while (assists.length < goalsCount) assists.push({ assistOrder: assists.length + 1, playerId: '' });
+        return { ...prev, [m.id]: { scorers, assists } };
+      });
+    }
+    setExpandedMatchId(m.id);
+  };
+
+  const setMatchScorer = (matchId: string, goalOrder: number, playerId: string) => {
+    setMatchScorersData((prev) => {
+      const data = prev[matchId];
+      if (!data) return prev;
+      const scorers = data.scorers.map((s) => (s.goalOrder === goalOrder ? { ...s, playerId } : s));
+      return { ...prev, [matchId]: { ...data, scorers } };
+    });
+  };
+
+  const setMatchAssist = (matchId: string, assistOrder: number, playerId: string) => {
+    setMatchScorersData((prev) => {
+      const data = prev[matchId];
+      if (!data) return prev;
+      const assists = data.assists.map((a) => (a.assistOrder === assistOrder ? { ...a, playerId } : a));
+      return { ...prev, [matchId]: { ...data, assists } };
+    });
+  };
+
+  const saveMatchScorers = async (matchId: string) => {
+    const data = matchScorersData[matchId];
+    if (!data || !teamId || !token) return;
+    setMatchScorersSaving(matchId);
+    try {
+      const scorers = data.scorers.filter((s) => s.playerId).map((s) => ({ goalOrder: s.goalOrder, playerId: s.playerId }));
+      const assists = data.assists.filter((a) => a.playerId).map((a) => ({ assistOrder: a.assistOrder, playerId: a.playerId }));
+      const res = await fetch(`/api/teams/${teamId}/matches/${matchId}/scorers`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scorers, assists }),
+      });
+      if (res.ok) {
+        setMatchScorersData((prev) => ({ ...prev, [matchId]: { ...data, scorers, assists } }));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err?.error || 'Chyba při ukládání');
+      }
+    } finally {
+      setMatchScorersSaving(null);
+    }
   };
 
   const otherPlayers = voterId ? players.filter((p) => p.id !== voterId) : [];
+
+  useEffect(() => {
+    if (!teamId || !token || !voterId || !matchId) {
+      setHasVoted(null);
+      return;
+    }
+    fetch(`/api/teams/${teamId}/ratings/check?matchId=${matchId}&voterPlayerId=${voterId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d) => setHasVoted(d.hasVoted ?? false))
+      .catch(() => setHasVoted(false));
+  }, [teamId, token, voterId, matchId]);
+
   useEffect(() => {
     if (otherPlayers.length === 0) {
       setScores({});
@@ -549,7 +805,7 @@ function HodnoceniHracuContent() {
     const s = scores[p.id];
     return s >= 0 && s <= 10;
   });
-  const canSubmit = voterId && matchId && otherPlayers.length > 0 && allRated;
+  const canSubmit = voterId && matchId && otherPlayers.length > 0 && allRated && !hasVoted;
 
   const submitVote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -560,6 +816,13 @@ function HodnoceniHracuContent() {
       return;
     }
     if (!canSubmit) return;
+    if (
+      !confirm(
+        'Jste si jistí, že jste ohodnotil všechny hrající hráče? Po odeslání nelze hodnocení měnit.'
+      )
+    ) {
+      return;
+    }
     setShowVoteValidation(false);
     setSubmitting(true);
     try {
@@ -576,7 +839,9 @@ function HodnoceniHracuContent() {
         setVoterId('');
         setMatchId('');
         setScores({});
+        setVoteSubmittedSuccess(true);
         fetchLeaderboard();
+        setTimeout(() => setVoteSubmittedSuccess(false), 5000);
       } else {
         const d = await res.json();
         alert(d.error || 'Chyba');
@@ -596,7 +861,7 @@ function HodnoceniHracuContent() {
 
   return (
     <div
-      className="min-h-screen animated-background py-12 px-4 relative"
+      className="min-h-screen animated-background py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8 relative"
       style={teamBackgroundColor ? { background: teamBackgroundColor } : undefined}
     >
       {/* Modální okno pro potvrzení mazání hráče */}
@@ -640,23 +905,23 @@ function HodnoceniHracuContent() {
 
       <Link
         href="/dashboard"
-        className="fixed top-4 left-4 px-4 py-2.5 glass-card text-white/90 rounded-xl border border-white/10 hover:bg-white/5 flex items-center gap-2 z-10"
+        className="fixed top-3 left-3 sm:top-4 sm:left-4 px-3 py-2 sm:px-4 sm:py-2.5 glass-card text-white/90 rounded-xl border border-white/10 hover:bg-white/5 flex items-center gap-2 z-10 text-sm sm:text-base"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
         </svg>
         Zpět
       </Link>
 
-      <div className="max-w-2xl mx-auto relative z-10">
-        <h1 className="text-2xl font-semibold text-white mb-6">Hodnocení hráčů</h1>
+      <div className="w-full max-w-7xl mx-auto relative z-10 pt-12 sm:pt-14">
+        <h1 className="text-xl sm:text-2xl font-semibold text-white mb-4 sm:mb-6">Hodnocení hráčů</h1>
 
-        <div className="flex gap-2 mb-6 flex-wrap">
-          {(['dashboard', 'manage', 'vote', 'leaderboard', 'calendar'] as Tab[]).map((t) => (
+        <div className="flex gap-1.5 sm:gap-2 mb-4 sm:mb-6 overflow-x-auto pb-1 -mx-1 flex-nowrap sm:flex-wrap">
+          {(['dashboard', 'manage', 'vote', 'leaderboard', 'canadian', 'calendar', 'taktika'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-4 py-2 rounded-xl font-medium transition-all ${
+              className={`shrink-0 px-3 py-2 sm:px-4 rounded-xl font-medium transition-all text-sm sm:text-base ${
                 tab === t
                   ? 'bg-violet-500/30 text-white border border-violet-400/50'
                   : 'bg-white/5 text-white/70 hover:bg-white/10 border border-white/10'
@@ -666,16 +931,48 @@ function HodnoceniHracuContent() {
               {t === 'manage' && 'Hráči a zápasy'}
               {t === 'vote' && 'Hlasovat'}
               {t === 'leaderboard' && 'Žebříček'}
-              {t === 'calendar' && 'Události'}
+              {t === 'canadian' && 'Kanadské bodování'}
+              {t === 'calendar' && 'Události/docházka'}
+              {t === 'taktika' && 'Taktika'}
             </button>
           ))}
         </div>
 
         {tab === 'dashboard' && (
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 lg:gap-6">
+            {/* Poslední odehraný zápas */}
+            {(() => {
+              const today = new Date().toISOString().slice(0, 10);
+              const pastMatches = matches.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date));
+              const lastMatch = pastMatches[0];
+              if (!lastMatch) return null;
+              const scoreStr =
+                lastMatch.goalsFor != null && lastMatch.goalsAgainst != null
+                  ? `${teamName || 'Náš tým'} ${lastMatch.goalsFor} : ${lastMatch.goalsAgainst} ${lastMatch.opponent || 'Soupeř'}`
+                  : lastMatch.result || '—';
+              const pom = lastMatch.playerOfMatch;
+              return (
+                <div className="glass-card rounded-2xl p-4 sm:p-6 border border-amber-500/30 bg-amber-500/5 col-span-full">
+                  <h2 className="text-base sm:text-lg font-semibold text-white mb-2 sm:mb-3">Poslední odehraný zápas</h2>
+                  <div className="space-y-1">
+                    <p className="text-white font-medium">
+                      {new Date(lastMatch.date).toLocaleDateString('cs-CZ')}
+                      {lastMatch.startTime ? ` ${lastMatch.startTime}` : ''} vs {lastMatch.opponent || 'soupeř'}
+                    </p>
+                    <p className="text-violet-400 font-semibold text-lg">{scoreStr}</p>
+                    {pom && (
+                      <p className="text-amber-400 font-medium flex items-center gap-1.5 mt-2">
+                        <span aria-hidden>⭐</span> Hráč utkání: {pom.playerName}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Následující události */}
-            <div className="glass-card rounded-2xl p-6">
-              <h2 className="text-lg font-semibold text-white mb-4">Následující události</h2>
+            <div className="glass-card rounded-2xl p-4 sm:p-6">
+              <h2 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">Následující události</h2>
               {(() => {
                 const today = new Date().toISOString().slice(0, 10);
                 const upcomingEvents = events.filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
@@ -690,26 +987,36 @@ function HodnoceniHracuContent() {
                   <div className="space-y-4">
                     {upcomingEvents.length > 0 && (
                       <div>
-                        {upcomingEvents.slice(0, 5).map((ev) => (
-                          <div
-                            key={ev.id}
-                            className="flex justify-between items-center py-2 px-3 rounded-lg bg-white/5 border border-white/10 mb-2"
-                          >
-                            <span className="text-white">
-                              {new Date(ev.date).toLocaleDateString('cs-CZ')}
-                              {ev.startTime ? ` ${ev.startTime}` : ''} – {EVENT_TYPE_LABELS[ev.eventType]}
-                              {ev.location && ` • ${ev.location}`}
-                              {ev.opponent && ev.opponent !== ev.location && ` vs ${ev.opponent}`}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => openAttendanceModal(ev)}
-                              className="text-violet-400 hover:text-violet-300 text-sm"
+                        {upcomingEvents.slice(0, 5).map((ev) => {
+                          const sum = eventAttendanceSummary[ev.id];
+                          return (
+                            <div
+                              key={ev.id}
+                              className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 rounded-lg bg-white/5 border border-white/10 mb-2 gap-2"
                             >
-                              Účast
-                            </button>
-                          </div>
-                        ))}
+                              <span className="text-white text-sm sm:text-base min-w-0">
+                                {new Date(ev.date).toLocaleDateString('cs-CZ')}
+                                {ev.startTime ? ` ${ev.startTime}` : ''} – {EVENT_TYPE_LABELS[ev.eventType]}
+                                {ev.location && ` • ${ev.location}`}
+                                {ev.opponent && ev.opponent !== ev.location && ` vs ${ev.opponent}`}
+                              </span>
+                              <div className="flex items-center gap-3 shrink-0">
+                                {sum && (
+                                  <span className="text-white/60 text-xs tabular-nums whitespace-nowrap" title="zúčastní • nezúčastní • neodpověděli">
+                                    {sum.attended}✓ {sum.notAttended}✗ {sum.noResponse}?
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openAttendanceModal(ev)}
+                                  className="text-violet-400 hover:text-violet-300 text-sm"
+                                >
+                                  Účast
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                         {upcomingEvents.length > 5 && (
                           <button
                             type="button"
@@ -744,8 +1051,8 @@ function HodnoceniHracuContent() {
             </div>
 
             {/* Graf formy */}
-            <div className="glass-card rounded-2xl p-6">
-              <h2 className="text-lg font-semibold text-white mb-2">Forma týmu a hráčů</h2>
+            <div className="glass-card rounded-2xl p-4 sm:p-6 lg:col-span-2 xl:col-span-2">
+              <h2 className="text-base sm:text-lg font-semibold text-white mb-2">Forma týmu a hráčů</h2>
               <p className="text-white/60 text-sm mb-4">
                 Na základě účasti na tréninzích, hodnocení ze zápasů a výsledků.
               </p>
@@ -777,15 +1084,12 @@ function HodnoceniHracuContent() {
                       .filter((m) => m.date <= new Date().toISOString().slice(0, 10))
                       .sort((a, b) => b.date.localeCompare(a.date))
                       .slice(0, 5);
-                    const wins = recentMatches.filter(
-                      (m) => m.goalsFor != null && m.goalsAgainst != null && m.goalsFor > m.goalsAgainst
-                    ).length;
-                    const draws = recentMatches.filter(
-                      (m) => m.goalsFor != null && m.goalsAgainst != null && m.goalsFor === m.goalsAgainst
-                    ).length;
-                    const losses = recentMatches.filter(
-                      (m) => m.goalsFor != null && m.goalsAgainst != null && m.goalsFor < m.goalsAgainst
-                    ).length;
+                    const matchesWithScore = recentMatches.filter(
+                      (m) => m.goalsFor != null && m.goalsAgainst != null
+                    );
+                    const wins = matchesWithScore.filter((m) => m.goalsFor! > m.goalsAgainst!).length;
+                    const draws = matchesWithScore.filter((m) => m.goalsFor === m.goalsAgainst).length;
+                    const losses = matchesWithScore.filter((m) => m.goalsFor! < m.goalsAgainst!).length;
 
                     return (
                       <div className="space-y-4">
@@ -804,7 +1108,7 @@ function HodnoceniHracuContent() {
                                 />
                               </div>
                             </div>
-                            {recentMatches.length > 0 && (
+                            {matchesWithScore.length > 0 && (
                               <div className="text-white/70 text-sm">
                                 Poslední zápasy: {wins}V {draws}R {losses}P
                               </div>
@@ -856,11 +1160,53 @@ function HodnoceniHracuContent() {
         )}
 
         {tab === 'manage' && (
-          <div className="glass-card rounded-2xl p-6 space-y-8">
-            <div>
-              <h2 className="text-lg font-semibold text-white mb-3">Hráči týmu</h2>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
+            <div className="glass-card rounded-2xl p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <button
+                  type="button"
+                  onClick={() => setPlayersListExpanded((prev) => !prev)}
+                  className="flex items-center gap-2 text-left group"
+                >
+                  <span className="inline-block w-5 text-white/60">{playersListExpanded ? '▼' : '▶'}</span>
+                  <h2 className="text-lg font-semibold text-white group-hover:text-white/90">
+                    Hráči týmu
+                    {!playersListExpanded && <span className="font-normal text-white/60 ml-1">({players.length})</span>}
+                  </h2>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlayersListExpanded(true);
+                    setTimeout(() => newPlayerInputRef.current?.focus(), 50);
+                  }}
+                  className="shrink-0 px-3 py-1.5 text-sm rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-medium"
+                >
+                  Přidat hráče
+                </button>
+              </div>
+
+              {playersListExpanded && (
+              <>
+              <div className="mb-4">
+                <label className="block text-white/80 text-sm mb-1">Trenér (30&nbsp;% větší vliv na žebříček)</label>
+                <select
+                  value={coachPlayerId ?? ''}
+                  onChange={(e) => setCoach(e.target.value || null)}
+                  disabled={savingCoach}
+                  className="px-4 py-2 rounded-lg glass-input text-white w-full max-w-xs disabled:opacity-50"
+                >
+                  <option value="">— Bez trenéra</option>
+                  {players.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                {savingCoach && <span className="text-white/50 text-sm ml-2">Ukládám...</span>}
+              </div>
+
               <form onSubmit={addPlayer} className="flex gap-2 mb-4">
                 <input
+                  ref={newPlayerInputRef}
                   type="text"
                   value={newPlayerName}
                   onChange={(e) => setNewPlayerName(e.target.value)}
@@ -874,8 +1220,13 @@ function HodnoceniHracuContent() {
               </form>
               <ul className="space-y-2">
                 {players.map((p) => (
-                  <li key={p.id} className="flex justify-between items-center py-2 border-b border-white/10">
-                    <span className="text-white">{p.name}</span>
+                  <li key={p.id} className="flex justify-between items-center py-2 border-b border-white/10 gap-2">
+                    <span className="text-white flex items-center gap-2">
+                      {p.name}
+                      {coachPlayerId === p.id && (
+                        <span className="text-violet-400 text-xs font-medium">(trenér)</span>
+                      )}
+                    </span>
                     <button
                       type="button"
                       onClick={() => deletePlayer(p.id, p.name)}
@@ -886,11 +1237,13 @@ function HodnoceniHracuContent() {
                   </li>
                 ))}
               </ul>
+              </>
+              )}
             </div>
 
-            <div>
+            <div className="glass-card rounded-2xl p-4 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <h2 className="text-lg font-semibold text-white">Zápasy</h2>
+                <h2 className="text-base sm:text-lg font-semibold text-white">Zápasy</h2>
                 {matchSeasons.length > 1 && (
                   <div className="flex gap-1">
                     {matchSeasons.map((s) => (
@@ -910,19 +1263,19 @@ function HodnoceniHracuContent() {
                   </div>
                 )}
               </div>
-              <form onSubmit={addMatch} className="flex flex-col sm:flex-row gap-2 mb-4">
+              <form onSubmit={addMatch} className="flex flex-col sm:flex-row gap-2 mb-4 flex-wrap">
                 <input
                   type="date"
                   value={newMatchDate}
                   onChange={(e) => setNewMatchDate(e.target.value)}
-                  className="px-4 py-2 rounded-lg glass-input text-white"
+                  className="px-4 py-2 rounded-lg glass-input text-white min-w-0 sm:min-w-[140px]"
                   required
                 />
                 <input
                   type="time"
                   value={newMatchStartTime}
                   onChange={(e) => setNewMatchStartTime(e.target.value)}
-                  className="px-4 py-2 rounded-lg glass-input text-white"
+                  className="px-4 py-2 rounded-lg glass-input text-white min-w-0 sm:min-w-[100px]"
                   title="Čas začátku"
                 />
                 <input
@@ -930,58 +1283,123 @@ function HodnoceniHracuContent() {
                   value={newMatchOpponent}
                   onChange={(e) => setNewMatchOpponent(e.target.value)}
                   placeholder="Soupeř (volitelně)"
-                  className="flex-1 px-4 py-2 rounded-lg glass-input text-white placeholder-white/50"
+                  className="flex-1 min-w-0 px-4 py-2 rounded-lg glass-input text-white placeholder-white/50"
                 />
                 <button type="submit" disabled={addingMatch} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white font-medium disabled:opacity-50">
                   {addingMatch ? '...' : 'Přidat zápas'}
                 </button>
               </form>
               <ul className="space-y-2">
-                {filteredMatches.map((m) => (
-                  <li key={m.id} className="flex justify-between items-center py-2 border-b border-white/10 gap-2">
-                    <span className="text-white">
-                      {new Date(m.date).toLocaleDateString('cs-CZ')}
-                      {m.startTime ? ` ${m.startTime}` : ''}
-                      {m.opponent && ` vs ${m.opponent}`}
-                      {(m.goalsFor != null && m.goalsAgainst != null) && (
-                        <span className="text-violet-400 font-semibold ml-2">
-                          ({teamName || 'Náš tým'} {m.goalsFor} : {m.goalsAgainst} {m.opponent || 'Soupeř'})
-                        </span>
-                      )}
-                      {(!m.goalsFor && !m.goalsAgainst) && m.result && (
-                        <span className="text-violet-400 font-semibold ml-2">({m.result})</span>
-                      )}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <MatchResultEdit
-                        match={m}
-                        teamId={teamId!}
-                        token={token!}
-                        teamLabel={teamName || 'Náš tým'}
-                        opponentLabel={m.opponent || 'Soupeř'}
-                        onUpdated={fetchMatches}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => deleteMatch(m.id)}
-                        className="text-red-400 hover:text-red-300 text-sm"
+                {filteredMatches.map((m) => {
+                  const goalsFor = m.goalsFor ?? 0;
+                  const isExpanded = expandedMatchId === m.id;
+                  const scorersData = matchScorersData[m.id];
+                  const canExpand = goalsFor > 0;
+                  return (
+                    <li key={m.id} className="border-b border-white/10">
+                      <div
+                        className={`flex justify-between items-center py-2 gap-2 ${canExpand ? 'cursor-pointer hover:bg-white/5 rounded-lg -mx-1 px-1' : ''}`}
+                        onClick={() => canExpand && toggleMatchExpand(m)}
+                        onKeyDown={(e) => canExpand && (e.key === 'Enter' || e.key === ' ') && e.preventDefault()}
+                        role={canExpand ? 'button' : undefined}
+                        tabIndex={canExpand ? 0 : undefined}
                       >
-                        Smazat
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                        <span className="text-white">
+                          {canExpand && (
+                            <span className="inline-block w-5 text-white/60">
+                              {isExpanded ? '▼' : '▶'}
+                            </span>
+                          )}
+                          {new Date(m.date).toLocaleDateString('cs-CZ')}
+                          {m.startTime ? ` ${m.startTime}` : ''}
+                          {m.opponent && ` vs ${m.opponent}`}
+                          {(m.goalsFor != null && m.goalsAgainst != null) && (
+                            <span className="text-violet-400 font-semibold ml-2">
+                              ({teamName || 'Náš tým'} {m.goalsFor} : {m.goalsAgainst} {m.opponent || 'Soupeř'})
+                            </span>
+                          )}
+                          {(!m.goalsFor && !m.goalsAgainst) && m.result && (
+                            <span className="text-violet-400 font-semibold ml-2">({m.result})</span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <MatchResultEdit
+                            match={m}
+                            teamId={teamId!}
+                            token={token!}
+                            teamLabel={teamName || 'Náš tým'}
+                            opponentLabel={m.opponent || 'Soupeř'}
+                            playerOfMatch={m.playerOfMatch}
+                            onUpdated={fetchMatches}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => deleteMatch(m.id)}
+                            className="text-red-400 hover:text-red-300 text-sm"
+                          >
+                            Smazat
+                          </button>
+                        </div>
+                      </div>
+                      {isExpanded && canExpand && scorersData && (
+                        <div className="pb-4 pl-6 pr-2 space-y-3" onClick={(e) => e.stopPropagation()}>
+                          <p className="text-white/70 text-sm font-medium">Střelci branek a asistence</p>
+                          {scorersData.scorers.map((_, i) => (
+                            <div key={i} className="flex flex-wrap items-center gap-2">
+                              <span className="text-white/60 text-sm w-20">Branka {i + 1}:</span>
+                              <select
+                                value={scorersData.scorers[i]?.playerId ?? ''}
+                                onChange={(e) => setMatchScorer(m.id, i + 1, e.target.value)}
+                                className="px-3 py-1.5 rounded-lg glass-input text-white text-sm min-w-[140px]"
+                              >
+                                <option value="">— Střelec —</option>
+                                {players.map((p) => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                              </select>
+                              <span className="text-white/50">+</span>
+                              <select
+                                value={scorersData.assists[i]?.playerId ?? ''}
+                                onChange={(e) => setMatchAssist(m.id, i + 1, e.target.value)}
+                                className="px-3 py-1.5 rounded-lg glass-input text-white text-sm min-w-[140px]"
+                              >
+                                <option value="">— Asistence —</option>
+                                {players.map((p) => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => saveMatchScorers(m.id)}
+                            disabled={matchScorersSaving === m.id}
+                            className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
+                          >
+                            {matchScorersSaving === m.id ? 'Ukládám...' : 'Uložit'}
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           </div>
         )}
 
         {tab === 'vote' && (
-          <div className="glass-card rounded-2xl p-6">
-            <h2 className="text-lg font-semibold text-white mb-4">Ohodnotit hráče po zápase</h2>
-            <p className="text-white/60 text-sm mb-4">
-              Vyberte sebe (hlasujícího), zápas a ohodnoťte spoluhráče škálou 0–10 (0 = nebyl nasazen, 10 = nejlepší). Nemůžete hodnotit sám sebe.
+          <div className="glass-card rounded-2xl p-4 sm:p-6 max-w-2xl">
+            <h2 className="text-base sm:text-lg font-semibold text-white mb-4">Podle vyhodnocení ze zápasu vyhodnoť hráče utkání</h2>
+              <p className="text-white/60 text-sm mb-4">
+              Vyberte sebe (hlasujícího), zápas a ohodnoťte spoluhráče škálou 0–10 podle výkonu v utkání (0 = nebyl nasazen, 10 = nejlepší). Nemůžete hodnotit sám sebe. Každý hráč může hlasovat jen jednou – po odeslání nelze měnit.
             </p>
+            {voteSubmittedSuccess && (
+              <div className="p-4 rounded-xl bg-emerald-500/20 border border-emerald-400/50 mb-4 flex items-center gap-2">
+                <span className="text-emerald-400 text-xl">✓</span>
+                <p className="text-emerald-200 font-medium">Hodnocení bylo odesláno.</p>
+              </div>
+            )}
             <form onSubmit={submitVote} className="space-y-4">
               <div>
                 <label className="block text-white font-medium mb-2">Kdo hlasuje?</label>
@@ -998,6 +1416,7 @@ function HodnoceniHracuContent() {
                   {players.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
+                      {coachPlayerId === p.id ? ' (trenér)' : ''}
                     </option>
                   ))}
                 </select>
@@ -1007,8 +1426,14 @@ function HodnoceniHracuContent() {
                 <select
                   value={matchId}
                   onChange={(e) => {
-                    setMatchId(e.target.value);
-                    setShowVoteValidation(false);
+                    const val = e.target.value;
+                    if (val === '__add_match__') {
+                      setMatchId('');
+                      setTab('manage');
+                    } else {
+                      setMatchId(val);
+                      setShowVoteValidation(false);
+                    }
                   }}
                   className={`w-full px-4 py-3 rounded-xl glass-input text-white ${showVoteValidation && !matchId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}
                   required
@@ -1026,9 +1451,16 @@ function HodnoceniHracuContent() {
                           : ''}
                     </option>
                   ))}
+                  <option value="__add_match__">➕ Přidat zápas</option>
                 </select>
               </div>
-              {otherPlayers.length > 0 && (
+              {hasVoted && (
+                <div className="p-4 rounded-xl bg-amber-500/20 border border-amber-500/40">
+                  <p className="text-amber-200 font-medium">Už jste pro tento zápas hlasoval.</p>
+                  <p className="text-white/70 text-sm mt-1">Hodnocení nelze měnit.</p>
+                </div>
+              )}
+              {otherPlayers.length > 0 && !hasVoted && (
                 <div>
                   <label className="block text-white font-medium mb-3">
                     Hodnocení táhlem (0 = nebyl nasazen, 10 = nejlepší)
@@ -1039,7 +1471,12 @@ function HodnoceniHracuContent() {
                       return (
                         <div key={p.id} className="space-y-1">
                           <div className="flex justify-between items-center">
-                            <span className="text-white font-medium">{p.name}</span>
+                            <span className="text-white font-medium">
+                              {p.name}
+                              {coachPlayerId === p.id && (
+                                <span className="text-violet-400 text-xs font-medium ml-1">(trenér)</span>
+                              )}
+                            </span>
                             <span className="flex items-center gap-2">
                               <span className="text-2xl" aria-hidden>{RATING_EMOJI[val]}</span>
                               <span className="text-violet-400 font-semibold tabular-nums">{val === 0 ? '0 (nehrál)' : `${val}/10`}</span>
@@ -1069,24 +1506,55 @@ function HodnoceniHracuContent() {
                   </div>
                 </div>
               )}
-              <button
-                type="submit"
-                disabled={!canSubmit || submitting}
-                className="w-full py-3 bg-violet-500 hover:bg-violet-600 rounded-xl text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {submitting && <LoadingSpinner size="sm" />}
-                <span>{submitting ? 'Odesílám...' : 'Odeslat hodnocení'}</span>
-              </button>
+              {!hasVoted && (
+                <button
+                  type="submit"
+                  disabled={!canSubmit || submitting}
+                  className="w-full py-3 bg-violet-500 hover:bg-violet-600 rounded-xl text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {submitting && <LoadingSpinner size="sm" />}
+                  <span>{submitting ? 'Odesílám...' : 'Odeslat hodnocení'}</span>
+                </button>
+              )}
             </form>
           </div>
         )}
 
         {tab === 'leaderboard' && (
-          <div className="glass-card rounded-2xl p-6">
-            <h2 className="text-lg font-semibold text-white mb-4">Žebříček hráčů</h2>
+          <div className="glass-card rounded-2xl p-4 sm:p-6 max-w-3xl">
+            <h2 className="text-base sm:text-lg font-semibold text-white mb-4">Žebříček hráčů</h2>
             <p className="text-white/60 text-sm mb-4">
               Průměrné hodnocení od spoluhráčů po zápasech. Čím více hlasů, tím reprezentativnější.
             </p>
+            {(matchSeasons.length > 0 || matches.length > 0) && (
+              <div className="mb-4">
+                <label className="block text-white/80 text-sm mb-1">Filtrovat podle</label>
+                <select
+                  value={leaderboardFilter}
+                  onChange={(e) => setLeaderboardFilter(e.target.value)}
+                  className="px-4 py-2 rounded-lg glass-input text-white w-full max-w-xs"
+                >
+                  <option value="">Všechny zápasy (celkový průměr)</option>
+                  <optgroup label="Průměr za sezónu">
+                    {matchSeasons.map((s) => (
+                      <option key={s} value={`season:${s}`}>
+                        Sezóna {s}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Za konkrétní zápas">
+                    {matches
+                      .sort((a, b) => b.date.localeCompare(a.date))
+                      .map((m) => (
+                        <option key={m.id} value={`match:${m.id}`}>
+                          {new Date(m.date).toLocaleDateString('cs-CZ')}
+                          {m.opponent ? ` vs ${m.opponent}` : ''}
+                        </option>
+                      ))}
+                  </optgroup>
+                </select>
+              </div>
+            )}
             {leaderboard.length === 0 ? (
               <p className="text-white/50 italic">Zatím žádná hodnocení.</p>
             ) : (
@@ -1110,17 +1578,71 @@ function HodnoceniHracuContent() {
           </div>
         )}
 
+        {tab === 'canadian' && (
+          <div className="glass-card rounded-2xl p-4 sm:p-6 overflow-hidden">
+            <h2 className="text-base sm:text-lg font-semibold text-white mb-4">Kanadské bodování</h2>
+            <p className="text-white/60 text-sm mb-4">
+              Góly a asistence našeho týmu. 1 gól = 1b, 1 asistence = 1b. Seřazeno podle celkového součtu.
+            </p>
+            {(matchSeasons.length > 0 || matches.length > 0) && (
+              <div className="mb-4">
+                <label className="block text-white/80 text-sm mb-1">Sezóna</label>
+                <select
+                  value={canadianFilter}
+                  onChange={(e) => setCanadianFilter(e.target.value)}
+                  className="px-4 py-2 rounded-lg glass-input text-white w-full max-w-xs"
+                >
+                  <option value="">Všechny zápasy</option>
+                  {matchSeasons.map((s) => (
+                    <option key={s} value={`season:${s}`}>
+                      Sezóna {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {canadianStats.length === 0 ? (
+              <p className="text-white/50 italic">Zatím žádné góly ani asistence. Zadejte střelce a asistenty u zápasů.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-white/20">
+                      <th className="py-2 pr-4 text-white/70 font-medium">#</th>
+                      <th className="py-2 pr-4 text-white/70 font-medium">Hráč</th>
+                      <th className="py-2 pr-4 text-white/70 font-medium text-center">G</th>
+                      <th className="py-2 pr-4 text-white/70 font-medium text-center">A</th>
+                      <th className="py-2 text-white/70 font-medium text-center">Celkem (1b)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {canadianStats.map((entry, i) => (
+                      <tr key={entry.playerId} className="border-b border-white/10">
+                        <td className="py-2 pr-4 text-white/60">{i + 1}</td>
+                        <td className="py-2 pr-4 text-white font-medium">{entry.playerName}</td>
+                        <td className="py-2 pr-4 text-center text-violet-400">{entry.goals}</td>
+                        <td className="py-2 pr-4 text-center text-amber-400">{entry.assists}</td>
+                        <td className="py-2 text-center text-violet-300 font-semibold">{entry.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {tab === 'calendar' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {calendarError && (
               <div className="glass-card rounded-2xl p-4 border border-amber-500/50 bg-amber-500/10">
                 <p className="text-amber-200 text-sm">{calendarError}</p>
               </div>
             )}
-            <div className="glass-card rounded-2xl p-6">
-              <h2 className="text-lg font-semibold text-white mb-3">Kalendář událostí</h2>
+            <div className="glass-card rounded-2xl p-4 sm:p-6">
+              <h2 className="text-base sm:text-lg font-semibold text-white mb-3">Kalendář událostí</h2>
               <p className="text-white/60 text-sm mb-4">
-                Přidejte tréninky a zápasy (přátelské/mistrovské). Kliknutím na událost zaznamenáte účast hráčů.
+                Přidejte tréninky a zápasy. „Odkaz“ = hráči potvrdí účast před událostí. „Docházka“ = po uskutečnění události finálně zaznamenáte, kdo skutečně přišel (jednorázové odeslání, nelze měnit).
               </p>
               <form onSubmit={addEvent} className="flex flex-col gap-3 mb-6">
                 <div className="flex flex-wrap gap-2">
@@ -1177,6 +1699,41 @@ function HodnoceniHracuContent() {
                   {addingEvent ? '...' : 'Přidat událost'}
                 </button>
               </form>
+              {createdEventLink && (
+                <div className="mb-6 p-4 rounded-xl bg-emerald-500/20 border border-emerald-400/30">
+                  <p className="text-white font-medium mb-2">Odkaz pro potvrzení účasti (hráči před událostí řeknou, zda přijdou):</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={createdEventLink}
+                      className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-white/10 text-white text-sm font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(createdEventLink);
+                          alert('Odkaz zkopírován do schránky');
+                        } catch {
+                          alert('Kopírování se nepovedlo');
+                        }
+                      }}
+                      className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white text-sm font-medium"
+                    >
+                      Kopírovat
+                    </button>
+                    <a
+                      href={createdEventLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm font-medium"
+                    >
+                      Otevřít v novém okně
+                    </a>
+                  </div>
+                </div>
+              )}
               {(() => {
                 const today = new Date().toISOString().slice(0, 10);
                 const upcoming = events.filter((ev) => ev.date >= today).sort((a, b) => a.date.localeCompare(b.date));
@@ -1196,6 +1753,14 @@ function HodnoceniHracuContent() {
                   });
                 };
 
+                const copyAttendanceLink = (ev: Event) => {
+                  if (!ev.shareToken) return;
+                  const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/udalost/${ev.shareToken}`;
+                  navigator.clipboard.writeText(url).then(
+                    () => alert('Odkaz zkopírován'),
+                    () => alert('Kopírování se nepovedlo')
+                  );
+                };
                 const EventList = ({ evs }: { evs: Event[] }) => (
                   <ul className="space-y-2">
                     {evs.map((ev) => (
@@ -1215,9 +1780,29 @@ function HodnoceniHracuContent() {
                             )}
                           </span>
                         </button>
-                        <button type="button" onClick={() => deleteEvent(ev.id)} className="text-red-400 hover:text-red-300 text-sm shrink-0">
-                          Smazat
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => openAttendanceModal(ev)}
+                            className="text-emerald-400 hover:text-emerald-300 text-sm px-2 py-1 font-medium"
+                            title="Po události: finálně zaznamenat, kdo přišel"
+                          >
+                            Docházka
+                          </button>
+                          {ev.shareToken && (
+                            <button
+                              type="button"
+                              onClick={() => copyAttendanceLink(ev)}
+                              className="text-violet-400 hover:text-violet-300 text-sm px-2 py-1"
+                              title="Kopírovat odkaz pro potvrzení účasti (hráči před událostí)"
+                            >
+                              Odkaz
+                            </button>
+                          )}
+                          <button type="button" onClick={() => deleteEvent(ev.id)} className="text-red-400 hover:text-red-300 text-sm">
+                            Smazat
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -1276,8 +1861,8 @@ function HodnoceniHracuContent() {
             </div>
 
             {attendanceStats.some((s) => s.trainingCount > 0) && (
-              <div className="glass-card rounded-2xl p-6">
-                <h2 className="text-lg font-semibold text-white mb-2">Účast na tréninzích vs výkonnost na zápasech</h2>
+              <div className="glass-card rounded-2xl p-4 sm:p-6">
+                <h2 className="text-base sm:text-lg font-semibold text-white mb-2">Účast na tréninzích vs výkonnost na zápasech</h2>
                 <p className="text-white/60 text-sm mb-4">
                   Porovnání % účasti na tréninzích s průměrným hodnocením v zápasech.
                 </p>
@@ -1317,34 +1902,61 @@ function HodnoceniHracuContent() {
           </div>
         )}
 
+        {tab === 'taktika' && (
+          <div className="space-y-4 sm:space-y-6">
+            <div className="glass-card rounded-2xl p-4 sm:p-6">
+              <h2 className="text-base sm:text-lg font-semibold text-white mb-3">Taktika</h2>
+              <p className="text-white/60 text-sm">Obsah záložky Taktika.</p>
+            </div>
+          </div>
+        )}
+
         {attendanceModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setAttendanceModal(null)}>
             <div className="glass-card rounded-2xl p-6 w-full max-w-md shadow-2xl border border-white/10" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-lg font-semibold text-white mb-2">
-                Účast – {new Date(attendanceModal.date).toLocaleDateString('cs-CZ')}
-                {attendanceModal.startTime ? ` ${attendanceModal.startTime}` : ''} {EVENT_TYPE_LABELS[attendanceModal.eventType]}
+                Docházka – finální přehled zúčastněných
               </h3>
+              <p className="text-white/70 text-sm mb-2">
+                {new Date(attendanceModal.date).toLocaleDateString('cs-CZ')}
+                {attendanceModal.startTime ? ` ${attendanceModal.startTime}` : ''} – {EVENT_TYPE_LABELS[attendanceModal.eventType]}
+              </p>
               {(attendanceModal.location || attendanceModal.note) && (
                 <div className="text-white/70 text-sm mb-4 space-y-1">
                   {attendanceModal.location && <p>{attendanceModal.location}</p>}
                   {attendanceModal.note && <p className="italic">Poznámka: {attendanceModal.note}</p>}
                 </div>
               )}
-              <p className="text-white/60 text-sm mb-4">Zaklikněte hráče, kteří se zúčastnili:</p>
+              {attendanceModalClosed ? (
+                <p className="text-amber-400 text-sm mb-4">
+                  {attendanceModalFinalized
+                    ? 'Docházka byla odeslána a nelze ji měnit.'
+                    : 'Docházku lze zadat až 15 minut před začátkem události.'}
+                </p>
+              ) : (
+                <p className="text-white/60 text-sm mb-4">Zaklikněte hráče, kteří skutečně přišli. Odeslání je finální a nelze měnit.</p>
+              )}
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {players.map((p) => {
                   const a = attendanceData.find((x) => x.playerId === p.id);
                   const attended = a?.attended ?? false;
+                  const reason = a?.absenceReason;
                   return (
-                    <label key={p.id} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-white/5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={attended}
-                        onChange={() => toggleAttendance(p.id)}
-                        className="w-5 h-5 rounded accent-violet-500"
-                      />
-                      <span className="text-white">{p.name}</span>
-                    </label>
+                    <div key={p.id} className="py-2 px-3 rounded-lg hover:bg-white/5">
+                      <label className={`flex items-center gap-3 ${attendanceModalClosed ? 'cursor-default' : 'cursor-pointer'}`}>
+                        <input
+                          type="checkbox"
+                          checked={attended}
+                          onChange={() => !attendanceModalClosed && toggleAttendance(p.id)}
+                          disabled={attendanceModalClosed}
+                          className="w-5 h-5 rounded accent-violet-500 disabled:opacity-70"
+                        />
+                        <span className="text-white">{p.name}</span>
+                      </label>
+                      {!attended && reason && (
+                        <p className="text-white/50 text-xs mt-1 ml-8 italic">Důvod: {reason}</p>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -1352,9 +1964,11 @@ function HodnoceniHracuContent() {
                 <button type="button" onClick={() => setAttendanceModal(null)} className="flex-1 px-4 py-3 rounded-xl bg-white/10 text-white hover:bg-white/20 font-medium">
                   Zavřít
                 </button>
-                <button type="button" onClick={saveAttendance} disabled={attendanceSaving} className="flex-1 px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium disabled:opacity-50">
-                  {attendanceSaving ? 'Ukládám...' : 'Uložit účast'}
-                </button>
+                {!attendanceModalClosed && (
+                  <button type="button" onClick={saveAttendance} disabled={attendanceSaving} className="flex-1 px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium disabled:opacity-50">
+                    {attendanceSaving ? 'Odesílám...' : 'Odeslat docházku'}
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/middleware';
+import { db } from '@/lib/db-supabase';
 import { dbPlayers } from '@/lib/db-players';
 
 export async function GET(
@@ -14,7 +15,15 @@ export async function GET(
     if (user.type === 'team' && user.id !== params.id) {
       return NextResponse.json({ error: 'Nemáte oprávnění' }, { status: 403 });
     }
-    const players = await dbPlayers.players.getByTeamId(params.id);
+    let players = await dbPlayers.players.getByTeamId(params.id);
+    const team = await db.teams.getById(params.id);
+    const coachPlayerId = team?.coachPlayerId ?? null;
+    if (coachPlayerId && !players.some((p) => p.id === coachPlayerId)) {
+      const coach = await dbPlayers.players.getById(coachPlayerId, params.id);
+      if (coach) {
+        players = [coach, ...players];
+      }
+    }
     return NextResponse.json({ players });
   } catch (error: any) {
     return NextResponse.json(

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/middleware';
-import { dbEvents } from '@/lib/db-events';
+import { dbEvents, canEditDashboardAttendance, isAttendanceFinalized } from '@/lib/db-events';
 
 export async function GET(
   request: NextRequest,
@@ -18,8 +18,13 @@ export async function GET(
     if (!event) {
       return NextResponse.json({ error: 'Událost nenalezena' }, { status: 404 });
     }
+    const finalized = isAttendanceFinalized(event);
+    const canEdit = canEditDashboardAttendance(event) && !finalized;
     const attendance = await dbEvents.attendance.getByEventId(params.eventId);
-    return NextResponse.json({ event, attendance });
+    return NextResponse.json({
+      event: { ...event, attendanceClosed: !canEdit, attendanceFinalized: finalized },
+      attendance,
+    });
   } catch (error: unknown) {
     return NextResponse.json(
       { error: (error as Error)?.message || 'Chyba při načítání události' },

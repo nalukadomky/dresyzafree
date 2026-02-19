@@ -63,10 +63,18 @@ export async function POST(
     return NextResponse.json({ event });
   } catch (error: unknown) {
     const msg = (error as Error)?.message || '';
+    if (msg.includes('share_token') || msg.includes('absence_reason')) {
+      return NextResponse.json(
+        {
+          error: 'Spusť v Supabase SQL Editor skript: scripts/add-event-share-token.sql',
+        },
+        { status: 500 }
+      );
+    }
     if (msg.includes('note') || msg.includes('start_time') || msg.includes('column') || msg.includes('does not exist')) {
       return NextResponse.json(
         {
-          error: 'V tabulce events chybí sloupce (note, start_time). Přidej SUPABASE_ACCESS_TOKEN do .env.local a navštiv: /api/admin/migrate-event-note?key=migrate-event-note-2024',
+          error: 'V tabulce events chybí sloupce. Přidej SUPABASE_ACCESS_TOKEN do .env.local a navštiv: /api/admin/migrate-event-note?key=migrate-event-note-2024',
         },
         { status: 500 }
       );

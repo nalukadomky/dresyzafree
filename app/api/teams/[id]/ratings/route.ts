@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/middleware';
+import { db } from '@/lib/db-supabase';
 import { dbPlayers } from '@/lib/db-players';
 
 export async function GET(
@@ -14,7 +15,14 @@ export async function GET(
     if (user.type === 'team' && user.id !== params.id) {
       return NextResponse.json({ error: 'Nemáte oprávnění' }, { status: 403 });
     }
-    const leaderboard = await dbPlayers.ratings.getLeaderboard(params.id);
+    const team = await db.teams.getById(params.id);
+    const coachPlayerId = team?.coachPlayerId ?? null;
+    const matchId = request.nextUrl.searchParams.get('matchId') || undefined;
+    const season = request.nextUrl.searchParams.get('season') || undefined;
+    const leaderboard = await dbPlayers.ratings.getLeaderboard(params.id, coachPlayerId, {
+      matchId: matchId || undefined,
+      season: season || undefined,
+    });
     return NextResponse.json({ leaderboard });
   } catch (error: any) {
     return NextResponse.json(

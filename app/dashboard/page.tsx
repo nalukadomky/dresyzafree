@@ -23,7 +23,11 @@ export default function DashboardPage() {
   const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [savingColor, setSavingColor] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTeamName, setSettingsTeamName] = useState('');
+  const [settingsLogoFile, setSettingsLogoFile] = useState<File | null>(null);
+  const [settingsLogoPreview, setSettingsLogoPreview] = useState<string | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -72,29 +76,56 @@ export default function DashboardPage() {
     router.push('/');
   };
 
-  const PRESET_COLORS = [
-    '#0f1419', '#1a1a2e', '#16213e', '#0f3460', '#1b2838',
-    '#2d1b4e', '#3d1f5c', '#1e3a5f', '#2c3e50', '#1a472a',
-    '#2d5016', '#4a3728', '#5c2a2a', '#2a2a5c', '#1a1a3a',
-  ];
+  const openSettings = () => {
+    setSettingsTeamName(team?.teamName || '');
+    setSettingsLogoFile(null);
+    setSettingsLogoPreview(null);
+    setSettingsOpen(true);
+  };
 
-  const setTeamColor = async (color: string) => {
+  const saveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!team?.id) return;
     const token = localStorage.getItem('token');
     if (!token) return;
-    setSavingColor(true);
+    setSavingSettings(true);
     try {
+      let logoPath: string | undefined;
+      if (settingsLogoFile) {
+        const fd = new FormData();
+        fd.append('logo', settingsLogoFile);
+        const logoRes = await fetch('/api/upload-logo', { method: 'POST', body: fd });
+        const logoData = await logoRes.json();
+        if (!logoRes.ok) {
+          alert(logoData.error || 'Chyba při nahrávání loga');
+          setSavingSettings(false);
+          return;
+        }
+        logoPath = logoData.logoPath;
+      }
+      const updates: Record<string, string | undefined> = {};
+      if (settingsTeamName.trim()) updates.teamName = settingsTeamName.trim();
+      if (settingsLogoFile) updates.logo = logoPath;
+      if (Object.keys(updates).length === 0) {
+        setSettingsOpen(false);
+        setSavingSettings(false);
+        return;
+      }
       const res = await fetch(`/api/teams/${team.id}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backgroundColor: color || null }),
+        body: JSON.stringify(updates),
       });
       if (res.ok) {
         const data = await res.json();
         setTeam(data.team);
+        setSettingsOpen(false);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || 'Chyba při ukládání');
       }
     } finally {
-      setSavingColor(false);
+      setSavingSettings(false);
     }
   };
 
@@ -174,14 +205,82 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="px-6 py-2.5 bg-red-500/90 hover:bg-red-600 text-white font-semibold rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-red-500/30 w-full sm:w-auto"
-            aria-label="Odhlásit se"
-          >
-            Odhlásit se
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={openSettings}
+              className="px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition-all duration-300 border border-white/20 w-full sm:w-auto flex items-center gap-2"
+              aria-label="Nastavení"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Nastavení
+            </button>
+            <button
+              onClick={handleLogout}
+              className="px-6 py-2.5 bg-red-500/90 hover:bg-red-600 text-white font-semibold rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-red-500/30 w-full sm:w-auto"
+              aria-label="Odhlásit se"
+            >
+              Odhlásit se
+            </button>
+          </div>
         </div>
+
+        {/* Modální okno Nastavení */}
+        {settingsOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setSettingsOpen(false)}>
+            <div className="glass-card rounded-2xl p-6 w-full max-w-md shadow-2xl border border-white/10" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-xl font-semibold text-white mb-4">Nastavení týmu</h2>
+              <form onSubmit={saveSettings} className="space-y-4">
+                <div>
+                  <label className="block text-white/80 text-sm mb-1">Název týmu</label>
+                  <input
+                    type="text"
+                    value={settingsTeamName}
+                    onChange={(e) => setSettingsTeamName(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl glass-input text-white"
+                    placeholder="Např. FC Kája"
+                  />
+                </div>
+                <div>
+                  <label className="block text-white/80 text-sm mb-1">Logo týmu</label>
+                  <div className="flex items-center gap-4">
+                    {(settingsLogoPreview || settingsLogoFile || team?.logo) && (
+                      <img
+                        src={settingsLogoFile ? URL.createObjectURL(settingsLogoFile) : (settingsLogoPreview || team?.logo || '')}
+                        alt="Náhled loga"
+                        className="w-16 h-16 rounded-full object-cover border-2 border-white/20"
+                      />
+                    )}
+                    <div className="flex-1">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          setSettingsLogoFile(f || null);
+                          setSettingsLogoPreview(f ? URL.createObjectURL(f) : null);
+                        }}
+                        className="text-white/80 text-sm file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-violet-500 file:text-white file:font-medium"
+                      />
+                      <p className="text-white/50 text-xs mt-1">Obrázek max. 5 MB. Aktuální logo zůstane, pokud nenahrajete nové.</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button type="button" onClick={() => setSettingsOpen(false)} className="flex-1 px-4 py-3 rounded-xl bg-white/10 text-white hover:bg-white/20 font-medium">
+                    Zrušit
+                  </button>
+                  <button type="submit" disabled={savingSettings} className="flex-1 px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium disabled:opacity-50">
+                    {savingSettings ? 'Ukládám...' : 'Uložit'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Hodnocení hráčů */}
         <div className="glass-card rounded-2xl p-6 sm:p-8 mb-6 fade-in-up">
@@ -223,37 +322,6 @@ export default function DashboardPage() {
             <CountdownTimer deadline={team.tariffValidUntil} />
           </div>
         )}
-
-        {/* Barva pozadí */}
-        <div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up">
-          <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Barva pozadí</h2>
-          <p className="text-white/70 mb-4">Vyberte unikátní barvu pozadí pro váš tým.</p>
-          <div className="flex flex-wrap gap-2">
-            {PRESET_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setTeamColor(c)}
-                disabled={savingColor}
-                className={`w-10 h-10 rounded-xl border-2 transition-all hover:scale-110 ${
-                  team?.backgroundColor === c ? 'border-white ring-2 ring-white/50' : 'border-white/20 hover:border-white/40'
-                }`}
-                style={{ background: c }}
-                title={c}
-                aria-label={`Nastavit barvu ${c}`}
-              />
-            ))}
-            <button
-              type="button"
-              onClick={() => setTeamColor('')}
-              disabled={savingColor}
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-medium border border-white/20"
-            >
-              Výchozí
-            </button>
-          </div>
-          {savingColor && <p className="text-white/50 text-sm mt-2">Ukládám...</p>}
-        </div>
 
         {/* Doporučit klub */}
         <div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up">

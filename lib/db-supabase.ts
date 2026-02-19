@@ -26,6 +26,7 @@ export interface Team {
   meetingNote?: string;
   jerseyType?: string;
   backgroundColor?: string;
+  coachPlayerId?: string;
 }
 
 export interface Admin {
@@ -66,6 +67,7 @@ const columnMapping: Record<string, string> = {
   'meetingNote': 'meetingnote',
   'jerseyType': 'jerseytype',
   'backgroundColor': 'background_color',
+  'coachPlayerId': 'coach_player_id',
 };
 
 const reverseColumnMapping: Record<string, string> = Object.fromEntries(

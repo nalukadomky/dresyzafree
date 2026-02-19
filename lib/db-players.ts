@@ -66,6 +66,16 @@ export const dbPlayers = {
       if (error) throw new Error(error.message);
       return (data || []).map(mapPlayer);
     },
+    getById: async (id: string, teamId: string): Promise<Player | null> => {
+      const { data, error } = await client
+        .from('players')
+        .select('*')
+        .eq('id', id)
+        .eq('team_id', teamId)
+        .single();
+      if (error || !data) return null;
+      return mapPlayer(data);
+    },
     add: async (teamId: string, name: string): Promise<Player> => {
       const { data, error } = await client
         .from('players')
@@ -152,6 +162,103 @@ export const dbPlayers = {
       return true;
     },
   },
+  matchScorers: {
+    getScorers: async (matchId: string): Promise<{ goalOrder: number; playerId: string }[]> => {
+      const { data, error } = await client
+        .from('match_goal_scorers')
+        .select('goal_order, player_id')
+        .eq('match_id', matchId)
+        .order('goal_order');
+      if (error) throw new Error(error.message);
+      return (data || []).map((r: { goal_order: number; player_id: string }) => ({
+        goalOrder: r.goal_order,
+        playerId: r.player_id,
+      }));
+    },
+    getAssists: async (matchId: string): Promise<{ assistOrder: number; playerId: string }[]> => {
+      const { data, error } = await client
+        .from('match_assists')
+        .select('assist_order, player_id')
+        .eq('match_id', matchId)
+        .order('assist_order');
+      if (error) throw new Error(error.message);
+      return (data || []).map((r: { assist_order: number; player_id: string }) => ({
+        assistOrder: r.assist_order,
+        playerId: r.player_id,
+      }));
+    },
+    setScorersAndAssists: async (
+      matchId: string,
+      teamId: string,
+      scorers: { goalOrder: number; playerId: string }[],
+      assists: { assistOrder: number; playerId: string }[]
+    ): Promise<void> => {
+      const match = await client.from('matches').select('team_id').eq('id', matchId).eq('team_id', teamId).single();
+      if (match.error || !match.data) throw new Error('Zápas nenalezen');
+      await client.from('match_goal_scorers').delete().eq('match_id', matchId);
+      await client.from('match_assists').delete().eq('match_id', matchId);
+      if (scorers.length > 0) {
+        const rows = scorers.map((s) => ({ match_id: matchId, player_id: s.playerId, goal_order: s.goalOrder }));
+        const { error: e1 } = await client.from('match_goal_scorers').insert(rows);
+        if (e1) throw new Error(e1.message);
+      }
+      if (assists.length > 0) {
+        const rows = assists.map((a) => ({ match_id: matchId, player_id: a.playerId, assist_order: a.assistOrder }));
+        const { error: e2 } = await client.from('match_assists').insert(rows);
+        if (e2) throw new Error(e2.message);
+      }
+    },
+    /** Kanadské bodování: góly + asistence (1 asistence = 1b), seřazeno podle součtu */
+    getCanadianScoring: async (
+      teamId: string,
+      options?: { season?: string }
+    ): Promise<{ playerId: string; playerName: string; goals: number; assists: number; total: number }[]> => {
+      const matchesRes = await client.from('matches').select('id, date').eq('team_id', teamId);
+      let matchIds = (matchesRes.data || []).map((m: { id: string }) => m.id);
+      const matchesWithDate = (matchesRes.data || []) as { id: string; date: string }[];
+      if (options?.season) {
+        matchIds = matchesWithDate
+          .filter((m) => {
+            const d = new Date(m.date);
+            const year = d.getFullYear();
+            const month = d.getMonth() + 1;
+            const s = month >= 7 ? `${year}/${String(year + 1).slice(-2)}` : `${year - 1}/${String(year).slice(-2)}`;
+            return s === options.season;
+          })
+          .map((m) => m.id);
+      }
+      if (matchIds.length === 0) return [];
+      const [scorersRes, assistsRes, playersRes] = await Promise.all([
+        client.from('match_goal_scorers').select('player_id').in('match_id', matchIds),
+        client.from('match_assists').select('player_id').in('match_id', matchIds),
+        client.from('players').select('id, name').eq('team_id', teamId),
+      ]);
+      const players = (playersRes.data || []) as { id: string; name: string }[];
+      const byPlayer: Record<string, { goals: number; assists: number }> = {};
+      for (const p of players) byPlayer[p.id] = { goals: 0, assists: 0 };
+      for (const r of scorersRes.data || []) {
+        const row = r as { player_id: string };
+        if (byPlayer[row.player_id]) byPlayer[row.player_id].goals += 1;
+      }
+      for (const r of assistsRes.data || []) {
+        const row = r as { player_id: string };
+        if (byPlayer[row.player_id]) byPlayer[row.player_id].assists += 1;
+      }
+      return players
+        .map((p) => {
+          const d = byPlayer[p.id];
+          return {
+            playerId: p.id,
+            playerName: p.name,
+            goals: d?.goals ?? 0,
+            assists: d?.assists ?? 0,
+            total: (d?.goals ?? 0) + (d?.assists ?? 0),
+          };
+        })
+        .filter((x) => x.total > 0)
+        .sort((a, b) => b.total - a.total || b.goals - a.goals || b.assists - a.assists);
+    },
+  },
   ratings: {
     submit: async (
       matchId: string,
@@ -164,14 +271,13 @@ export const dbPlayers = {
         if (score < 0 || score > 10) throw new Error('Hodnocení musí být 0–10 (0 = nebyl nasazen)');
       }
 
-      // Smazat stará hodnocení tohoto hráče pro tento zápas
-      await client
-        .from('ratings')
-        .delete()
-        .eq('match_id', matchId)
-        .eq('voter_player_id', voterPlayerId);
+      // Každý hráč může hlasovat jen jednou – po odeslání nelze měnit
+      const alreadyVoted = await dbPlayers.ratings.hasVoted(matchId, voterPlayerId);
+      if (alreadyVoted) {
+        throw new Error('Už jste pro tento zápas hlasoval. Hodnocení nelze měnit.');
+      }
 
-      // Vložit nová (percentage sloupec ukládá skóre 0-10, 0 = nebyl nasazen)
+      // Vložit (percentage sloupec ukládá skóre 0-10, 0 = nebyl nasazen)
       const rows = ratings.map((r) => ({
         match_id: matchId,
         voter_player_id: voterPlayerId,
@@ -181,40 +287,89 @@ export const dbPlayers = {
       const { error } = await client.from('ratings').insert(rows);
       if (error) throw new Error(error.message);
     },
-    getLeaderboard: async (teamId: string): Promise<{ playerId: string; playerName: string; avgScore: number; voteCount: number }[]> => {
-      const matchesRes = await client.from('matches').select('id').eq('team_id', teamId);
-      const matchIds = (matchesRes.data || []).map((m) => m.id);
+    getLeaderboard: async (
+      teamId: string,
+      coachPlayerId?: string | null,
+      options?: { matchId?: string; season?: string }
+    ): Promise<{ playerId: string; playerName: string; avgScore: number; voteCount: number }[]> => {
+      const matchesRes = await client.from('matches').select('id, date').eq('team_id', teamId);
+      let matchIds = (matchesRes.data || []).map((m) => m.id);
+      const matchesWithDate = (matchesRes.data || []) as { id: string; date: string }[];
+
+      if (options?.matchId) {
+        matchIds = matchIds.includes(options.matchId) ? [options.matchId] : [];
+      } else if (options?.season) {
+        matchIds = matchesWithDate
+          .filter((m) => {
+            const d = new Date(m.date);
+            const year = d.getFullYear();
+            const month = d.getMonth() + 1;
+            const s = month >= 7 ? `${year}/${String(year + 1).slice(-2)}` : `${year - 1}/${String(year).slice(-2)}`;
+            return s === options.season;
+          })
+          .map((m) => m.id);
+      }
       if (matchIds.length === 0) return [];
 
       const { data: ratings } = await client
         .from('ratings')
-        .select('rated_player_id, percentage')
+        .select('match_id, rated_player_id, voter_player_id, percentage')
         .in('match_id', matchIds);
       const { data: players } = await client.from('players').select('id, name').eq('team_id', teamId);
       if (!ratings || !players) return [];
 
-      const byPlayer: Record<string, { sum: number; count: number }> = {};
+      // Pro každé (match_id, rated_player_id) spočítat počet ne-trenérských hlasů
+      const nonCoachCount: Record<string, number> = {};
+      for (const r of ratings) {
+        if (r.percentage <= 0) continue;
+        const key = `${r.match_id}:${r.rated_player_id}`;
+        const isCoach = coachPlayerId && r.voter_player_id === coachPlayerId;
+        if (!nonCoachCount[key]) nonCoachCount[key] = 0;
+        if (!isCoach) nonCoachCount[key] += 1;
+      }
+
+      const byPlayer: Record<string, { weightedSum: number; totalWeight: number }> = {};
       for (const p of players) {
-        byPlayer[p.id] = { sum: 0, count: 0 };
+        byPlayer[p.id] = { weightedSum: 0, totalWeight: 0 };
       }
       for (const r of ratings) {
-        if (byPlayer[r.rated_player_id] && r.percentage > 0) {
-          // 0 = nebyl nasazen, nepočítá do průměru
-          byPlayer[r.rated_player_id].sum += r.percentage;
-          byPlayer[r.rated_player_id].count += 1;
-        }
+        if (r.percentage <= 0 || !byPlayer[r.rated_player_id]) continue;
+        const key = `${r.match_id}:${r.rated_player_id}`;
+        const n = nonCoachCount[key] ?? 0;
+        const isCoach = coachPlayerId && r.voter_player_id === coachPlayerId;
+        const weight = isCoach ? 1.3 * n : 1;
+        byPlayer[r.rated_player_id].weightedSum += r.percentage * weight;
+        byPlayer[r.rated_player_id].totalWeight += weight;
       }
       return players
-        .map((p) => ({
-          playerId: p.id,
-          playerName: p.name,
-          avgScore: byPlayer[p.id]?.count
-            ? Math.round((byPlayer[p.id].sum / byPlayer[p.id].count) * 10) / 10
-            : 0,
-          voteCount: byPlayer[p.id]?.count || 0,
-        }))
+        .map((p) => {
+          const d = byPlayer[p.id];
+          const voteCount = d?.totalWeight ? Math.round(d.totalWeight) : 0;
+          return {
+            playerId: p.id,
+            playerName: p.name,
+            avgScore: d?.totalWeight
+              ? Math.round((d.weightedSum / d.totalWeight) * 10) / 10
+              : 0,
+            voteCount,
+          };
+        })
         .filter((x) => x.voteCount > 0)
         .sort((a, b) => b.avgScore - a.avgScore);
+    },
+    /** Hráč utkání = hráč s nejvyšším průměrným hodnocením od spoluhráčů a trenéra */
+    getPlayerOfMatchForMatches: async (
+      teamId: string,
+      coachPlayerId: string | null,
+      matchIds: string[]
+    ): Promise<Record<string, { playerId: string; playerName: string }>> => {
+      const result: Record<string, { playerId: string; playerName: string }> = {};
+      for (const matchId of matchIds) {
+        const leaderboard = await dbPlayers.ratings.getLeaderboard(teamId, coachPlayerId ?? undefined, { matchId });
+        const top = leaderboard[0];
+        if (top) result[matchId] = { playerId: top.playerId, playerName: top.playerName };
+      }
+      return result;
     },
     hasVoted: async (matchId: string, voterPlayerId: string): Promise<boolean> => {
       const { data } = await client
