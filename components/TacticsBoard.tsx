@@ -28,7 +28,7 @@ interface Stroke {
 export default function TacticsBoard({ players }: { players: Player[] }) {
   const [placedPlayers, setPlacedPlayers] = useState<PlacedPlayer[]>([]);
   const [drawMode, setDrawMode] = useState(false);
-  const [penColor, setPenColor] = useState(PEN_COLORS[0].value);
+  const [penColor, setPenColor] = useState<string>(PEN_COLORS[0].value);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentStroke, setCurrentStroke] = useState<{ x: number; y: number }[]>([]);

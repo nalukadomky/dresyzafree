@@ -364,7 +364,7 @@ function HodnoceniHracuContent() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : {}))
-      .then((d) => setCanadianStats(d.stats || []))
+      .then((d: { stats?: CanadianEntry[] }) => setCanadianStats(d?.stats || []))
       .catch(() => setCanadianStats([]));
   }, [tab, teamId, token, canadianFilter]);
 
@@ -385,7 +385,7 @@ function HodnoceniHracuContent() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : {}))
-      .then((d) => setEventAttendanceSummary(d.summary || {}))
+      .then((d: { summary?: Record<string, { attended: number; notAttended: number; noResponse: number }> }) => setEventAttendanceSummary(d?.summary || {}))
       .catch(() => {});
   }, [teamId, token, events]);
 
@@ -785,7 +785,7 @@ function HodnoceniHracuContent() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : {}))
-      .then((d) => setHasVoted(d.hasVoted ?? false))
+      .then((d: { hasVoted?: boolean }) => setHasVoted(d?.hasVoted ?? false))
       .catch(() => setHasVoted(false));
   }, [teamId, token, voterId, matchId]);
 

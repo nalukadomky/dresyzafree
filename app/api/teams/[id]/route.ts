@@ -60,7 +60,7 @@ export async function PATCH(
 
     const body = await request.json();
     const allowed = ['backgroundColor', 'coachPlayerId', 'teamName', 'logo'];
-    const updates: Record<string, string | undefined> = {};
+    const updates: Record<string, string | null | undefined> = {};
     for (const key of allowed) {
       if (key in body) {
         const val = body[key];
@@ -75,7 +75,7 @@ export async function PATCH(
           }
         }
         if (key === 'coachPlayerId') {
-          updates[key] = val === null || val === undefined || val === '' ? null : (typeof val === 'string' ? val.trim() : null);
+          updates[key] = val === null || val === undefined || val === '' ? null : (typeof val === 'string' ? val.trim() || null : null);
         }
         if (key === 'teamName') {
           const name = typeof val === 'string' ? val.trim() : '';
