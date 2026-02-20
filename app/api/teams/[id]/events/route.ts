@@ -44,8 +44,18 @@ export async function POST(
       return NextResponse.json({ error: 'Nemáte oprávnění' }, { status: 403 });
     }
     const { date, eventType, location, opponent, startTime, note } = await request.json();
-    if (!date) {
+    const dateValue = typeof date === 'string' ? date.trim() : '';
+    const startTimeValue = typeof startTime === 'string' ? startTime.trim() : '';
+    const locationValue = typeof location === 'string' ? location.trim() : '';
+
+    if (!dateValue) {
       return NextResponse.json({ error: 'Datum je povinné' }, { status: 400 });
+    }
+    if (!startTimeValue || !/^\d{1,2}:\d{2}$/.test(startTimeValue)) {
+      return NextResponse.json({ error: 'Čas začátku je povinný a musí být ve formátu HH:mm' }, { status: 400 });
+    }
+    if (!locationValue) {
+      return NextResponse.json({ error: 'Místo konání je povinné' }, { status: 400 });
     }
     const validTypes: EventType[] = ['training', 'friendly_match', 'competitive_match'];
     if (!eventType || !validTypes.includes(eventType)) {
@@ -53,11 +63,11 @@ export async function POST(
     }
     const event = await dbEvents.events.add(
       params.id,
-      date,
+      dateValue,
       eventType,
-      location,
+      locationValue,
       opponent,
-      startTime,
+      startTimeValue,
       note
     );
     return NextResponse.json({ event });

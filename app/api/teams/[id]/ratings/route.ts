@@ -3,6 +3,12 @@ import { verifyToken } from '@/lib/middleware';
 import { db } from '@/lib/db-supabase';
 import { dbPlayers } from '@/lib/db-players';
 
+function isMatchPlayed(date: string, startTime?: string): boolean {
+  if (!startTime || !/^\d{1,2}:\d{2}$/.test(startTime.trim())) return false;
+  const matchDateTime = new Date(`${date}T${startTime.trim()}:00`);
+  return !Number.isNaN(matchDateTime.getTime()) && matchDateTime.getTime() <= Date.now();
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -52,6 +58,19 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    const matches = await dbPlayers.matches.getByTeamId(params.id);
+    const selectedMatch = matches.find((m) => m.id === matchId);
+    if (!selectedMatch) {
+      return NextResponse.json({ error: 'Zápas neexistuje.' }, { status: 400 });
+    }
+    if (!isMatchPlayed(selectedMatch.date, selectedMatch.startTime)) {
+      return NextResponse.json(
+        { error: 'Hlasovat lze pouze pro zápasy, které už byly odehrané (datum a čas).' },
+        { status: 400 }
+      );
+    }
+
     const formatted = ratings.map(
       (r: any) => ({
         ratedPlayerId: r.ratedPlayerId,
