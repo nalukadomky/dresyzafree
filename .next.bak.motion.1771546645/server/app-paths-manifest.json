@@ -1,0 +1,11 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/login/team/page": "app/login/team/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/page": "app/page.js",
+  "/api/teams/[id]/canadian-scoring/route": "app/api/teams/[id]/canadian-scoring/route.js",
+  "/dashboard/hodnoceni-hracu/page": "app/dashboard/hodnoceni-hracu/page.js",
+  "/api/teams/[id]/attendance-stats/route": "app/api/teams/[id]/attendance-stats/route.js",
+  "/api/teams/[id]/route": "app/api/teams/[id]/route.js",
+  "/register/page": "app/register/page.js"
+}

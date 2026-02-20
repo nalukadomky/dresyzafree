@@ -1,0 +1,14 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/login/team/page": "app/login/team/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/api/teams/[id]/route": "app/api/teams/[id]/route.js",
+  "/api/teams/[id]/players/route": "app/api/teams/[id]/players/route.js",
+  "/api/teams/[id]/matches/route": "app/api/teams/[id]/matches/route.js",
+  "/dashboard/hodnoceni-hracu/page": "app/dashboard/hodnoceni-hracu/page.js",
+  "/api/teams/[id]/ratings/route": "app/api/teams/[id]/ratings/route.js",
+  "/api/teams/[id]/events/route": "app/api/teams/[id]/events/route.js",
+  "/api/teams/[id]/attendance-stats/route": "app/api/teams/[id]/attendance-stats/route.js",
+  "/api/teams/[id]/events-attendance-summary/route": "app/api/teams/[id]/events-attendance-summary/route.js",
+  "/api/teams/[id]/events/[eventId]/route": "app/api/teams/[id]/events/[eventId]/route.js"
+}

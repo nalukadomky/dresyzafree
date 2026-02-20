@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { GhostAuthCard } from '@/components/GhostLoader';
 
 function LoginContent() {
   const router = useRouter();
@@ -17,9 +18,7 @@ function LoginContent() {
 
   return (
     <div className="min-h-screen animated-background flex items-center justify-center">
-      <div className="text-white text-center">
-        <p>Přesměrovávám...</p>
-      </div>
+      <GhostAuthCard />
     </div>
   );
 }
@@ -28,9 +27,7 @@ export default function LoginPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen animated-background flex items-center justify-center">
-        <div className="text-white text-center">
-          <p>Načítání...</p>
-        </div>
+        <GhostAuthCard />
       </div>
     }>
       <LoginContent />

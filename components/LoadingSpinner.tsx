@@ -10,7 +10,7 @@ export default function LoadingSpinner({ size = 'md' }: { size?: 'sm' | 'md' | '
   return (
     <div className="flex items-center justify-center">
       <div className={`${sizeClasses[size]} relative`}>
-        <div className="absolute inset-0 border-4 border-white/20 rounded-full"></div>
+        <div className="absolute inset-0 border-4 border-foreground/20 rounded-full"></div>
         <div className="absolute inset-0 border-4 border-transparent border-t-blue-500 rounded-full animate-spin"></div>
       </div>
     </div>

@@ -3,6 +3,13 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
+/** V produkci nesmí chybět JWT_SECRET nebo být defaultní hodnota. */
+if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your-secret-key-change-in-production') {
+    console.error('JWT_SECRET chybí nebo je nebezpečná defaultní hodnota! Nastavte ho v Environment Variables na Vercelu.');
+  }
+}
+
 export interface AuthUser {
   id?: string;
   username: string;

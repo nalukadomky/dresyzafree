@@ -101,7 +101,7 @@ function supabaseToTeam(data: any): Team {
 }
 
 if (!supabase) {
-  throw new Error('Supabase není nakonfigurován! Nastavte NEXT_PUBLIC_SUPABASE_URL a NEXT_PUBLIC_SUPABASE_ANON_KEY v .env.local');
+  console.warn('Supabase není nakonfigurován! Nastavte NEXT_PUBLIC_SUPABASE_URL a NEXT_PUBLIC_SUPABASE_ANON_KEY v .env.local nebo v proměnných prostředí Vercelu.');
 }
 
 export const db = {

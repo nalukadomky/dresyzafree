@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { motion } from 'framer-motion';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import { MotionItem, MotionPage } from '@/components/Motion';
 import { CZECH_FOOTBALL_CLUBS } from '@/lib/czech-football-clubs';
 
 const PRE_DEFINED_LEAGUES = [
@@ -294,25 +296,27 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen animated-background flex items-center justify-center py-12 px-4">
       {/* Tlačítko zpět */}
-      <Link
-        href="/"
-        className="fixed top-4 left-4 px-4 py-2.5 glass-card text-white/90 rounded-xl border border-white/10 transition-all duration-200 hover:bg-white/5 hover:text-white flex items-center gap-2 z-10"
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-        </svg>
-        <span>Zpět</span>
-      </Link>
+      <motion.div className="fixed top-4 left-4 z-10" whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }}>
+        <Link
+          href="/"
+          className="px-4 py-2.5 glass-card text-foreground/90 rounded-xl border border-border transition-all duration-200 hover:bg-surface hover:text-foreground flex items-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span>Zpět</span>
+        </Link>
+      </motion.div>
 
-      <div className="max-w-2xl w-full glass-card rounded-2xl p-8 md:p-12 relative z-10 fade-in-up">
-        <h1 className="text-2xl md:text-3xl font-semibold text-white text-center mb-8 tracking-tight">
+      <MotionPage className="max-w-2xl w-full glass-card rounded-2xl p-8 md:p-12 relative z-10">
+        <h1 className="text-2xl md:text-3xl font-semibold text-foreground text-center mb-8 tracking-tight">
           Registrace týmu
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Název týmu */}
           <div className="relative">
-            <label className="block text-white font-semibold mb-2">
+            <label className="block text-foreground font-semibold mb-2">
               Název týmu *
             </label>
             <div className="relative">
@@ -326,7 +330,7 @@ export default function RegisterPage() {
                     filterClubs(formData.teamName);
                   }
                 }}
-                className={`w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none ${
+                className={`w-full px-4 py-3 rounded-xl glass-input text-foreground placeholder-muted-foreground focus:outline-none ${
                   fieldErrors.teamName ? 'border-2 border-red-500 bg-red-500/10' : ''
                 }`}
                 placeholder="Začněte psát název klubu..."
@@ -338,21 +342,21 @@ export default function RegisterPage() {
               {showSuggestions && clubSuggestions.length > 0 && (
                 <div
                   ref={suggestionsRef}
-                  className="absolute z-50 w-full mt-1 glass-card rounded-xl border border-white/10 max-h-60 overflow-y-auto"
+                  className="absolute z-50 w-full mt-1 glass-card rounded-xl border border-border max-h-60 overflow-y-auto"
                 >
                   {clubSuggestions.map((club, index) => (
                     <button
                       key={index}
                       type="button"
                       onClick={() => handleSuggestionClick(club)}
-                      className="w-full text-left px-4 py-3 hover:bg-violet-600/30 transition-colors text-white first:rounded-t-xl last:rounded-b-xl border-b border-white/10 last:border-b-0"
+                      className="w-full text-left px-4 py-3 hover:bg-violet-600/20 dark:hover:bg-violet-600/30 transition-colors text-foreground dark:text-white first:rounded-t-xl last:rounded-b-xl border-b border-border last:border-b-0"
                     >
                       <div className="flex items-center space-x-2">
-                        <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        <span className="font-medium text-white">{club}</span>
+                        <span className="font-medium text-foreground dark:text-white">{club}</span>
                       </div>
                     </button>
                   ))}
@@ -368,7 +372,7 @@ export default function RegisterPage() {
               </p>
             )}
             {formData.teamName.length > 0 && formData.teamName.length < 2 && (
-              <p className="text-white/50 text-xs mt-1">
+              <p className="text-foreground/50 text-xs mt-1">
                 Zadejte alespoň 2 znaky pro zobrazení návrhů
               </p>
             )}
@@ -376,7 +380,7 @@ export default function RegisterPage() {
 
           {/* Kontaktní osoba */}
           <div>
-            <label className="block text-white font-semibold mb-2">
+            <label className="block text-foreground font-semibold mb-2">
               Kontaktní osoba *
             </label>
             <input
@@ -392,7 +396,7 @@ export default function RegisterPage() {
                   });
                 }
               }}
-              className={`w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none ${
+              className={`w-full px-4 py-3 rounded-xl glass-input text-foreground placeholder-muted-foreground focus:outline-none ${
                 fieldErrors.contactPerson ? 'border-2 border-red-500 bg-red-500/10' : ''
               }`}
               placeholder="Jméno kontaktní osoby"
@@ -410,7 +414,7 @@ export default function RegisterPage() {
 
           {/* Telefon */}
           <div>
-            <label className="block text-white font-semibold mb-2">
+            <label className="block text-foreground font-semibold mb-2">
               Telefon *
             </label>
             <input
@@ -426,7 +430,7 @@ export default function RegisterPage() {
                   });
                 }
               }}
-              className={`w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none ${
+              className={`w-full px-4 py-3 rounded-xl glass-input text-foreground placeholder-muted-foreground focus:outline-none ${
                 fieldErrors.phone ? 'border-2 border-red-500 bg-red-500/10' : ''
               }`}
               placeholder="+420 123 456 789"
@@ -444,7 +448,7 @@ export default function RegisterPage() {
 
           {/* E-mail */}
           <div>
-            <label className="block text-white font-medium mb-2">
+            <label className="block text-foreground font-medium mb-2">
               E-mail *
             </label>
             <input
@@ -465,7 +469,7 @@ export default function RegisterPage() {
                   });
                 }
               }}
-              className={`w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none ${
+              className={`w-full px-4 py-3 rounded-xl glass-input text-foreground placeholder-muted-foreground focus:outline-none ${
                 fieldErrors.email ? 'border-2 border-red-500 bg-red-500/10' : ''
               }`}
               placeholder="vas@email.cz"
@@ -483,7 +487,7 @@ export default function RegisterPage() {
 
           {/* Ligy - kompaktní chips */}
           <div>
-            <label className="block text-white font-medium mb-2">
+            <label className="block text-foreground font-medium mb-2">
               Liga týmu * (vyberte nebo zadejte)
             </label>
             <div className={`space-y-2 ${fieldErrors.leagues ? 'ring-2 ring-red-500/50 rounded-xl p-2' : ''}`}>
@@ -505,7 +509,7 @@ export default function RegisterPage() {
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                       formData.leagues.includes(league)
                         ? 'bg-violet-500/30 text-white border border-violet-400/50'
-                        : 'bg-white/5 text-white/70 hover:bg-white/10 border border-white/10'
+                        : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
                     }`}
                   >
                     {league}
@@ -540,7 +544,7 @@ export default function RegisterPage() {
                     });
                   }
                 }}
-                className="w-full px-3 py-2 rounded-lg glass-input text-white placeholder-white/40 text-sm focus:outline-none"
+                className="w-full px-3 py-2 rounded-lg glass-input text-foreground placeholder-muted-foreground text-sm focus:outline-none"
                 placeholder="Nebo zadejte jinou ligu"
               />
             </div>
@@ -556,7 +560,7 @@ export default function RegisterPage() {
 
           {/* Uživatelské jméno - předvyplní se z e-mailu */}
           <div>
-            <label className="block text-white font-medium mb-2">
+            <label className="block text-foreground font-medium mb-2">
               Přihlašovací jméno *
             </label>
             <input
@@ -572,7 +576,7 @@ export default function RegisterPage() {
                   });
                 }
               }}
-              className={`w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none ${
+              className={`w-full px-4 py-3 rounded-xl glass-input text-foreground placeholder-muted-foreground focus:outline-none ${
                 fieldErrors.username ? 'border-2 border-red-500 bg-red-500/10' : ''
               }`}
               placeholder="Můžete použít e-mail"
@@ -590,7 +594,7 @@ export default function RegisterPage() {
 
           {/* Heslo */}
           <div>
-            <label className="block text-white font-semibold mb-2">
+            <label className="block text-foreground font-semibold mb-2">
               Heslo *
             </label>
             <input
@@ -627,7 +631,7 @@ export default function RegisterPage() {
                   }
                 }
               }}
-              className={`w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none ${
+              className={`w-full px-4 py-3 rounded-xl glass-input text-foreground placeholder-muted-foreground focus:outline-none ${
                 fieldErrors.password ? 'border-2 border-red-500 bg-red-500/10' : ''
               }`}
               placeholder="Minimálně 6 znaků"
@@ -646,7 +650,7 @@ export default function RegisterPage() {
 
           {/* Potvrzení hesla */}
           <div>
-            <label className="block text-white font-semibold mb-2">
+            <label className="block text-foreground font-semibold mb-2">
               Potvrzení hesla *
             </label>
             <input
@@ -681,7 +685,7 @@ export default function RegisterPage() {
                   });
                 }
               }}
-              className={`w-full px-4 py-3 rounded-xl glass-input text-white placeholder-white/50 focus:outline-none ${
+              className={`w-full px-4 py-3 rounded-xl glass-input text-foreground placeholder-muted-foreground focus:outline-none ${
                 fieldErrors.confirmPassword ? 'border-2 border-red-500 bg-red-500/10' : ''
               }`}
               placeholder="Zadejte heslo znovu"
@@ -699,11 +703,11 @@ export default function RegisterPage() {
           </div>
 
           {/* Volitelné - Logo a doporučující kód */}
-          <div className="border-t border-white/10 pt-5">
+          <div className="border-t border-border pt-5">
             <button
               type="button"
               onClick={() => setShowOptional(!showOptional)}
-              className="text-zinc-400 hover:text-white text-sm font-medium flex items-center gap-2 transition-colors"
+              className="text-foreground/60 hover:text-foreground text-sm font-medium flex items-center gap-2 transition-colors"
             >
               <svg className={`w-4 h-4 transition-transform ${showOptional ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -713,21 +717,21 @@ export default function RegisterPage() {
             {showOptional && (
               <div className="mt-4 space-y-4 slide-in">
                 <div>
-                  <label className="block text-white/80 font-medium mb-2">Logo týmu</label>
+                  <label className="block text-foreground/80 font-medium mb-2">Logo týmu</label>
                   <div className="space-y-2">
                     {logoPreview && (
-                      <img src={logoPreview} alt="Náhled" className="w-20 h-20 object-cover rounded-full border-2 border-white/20" />
+                      <img src={logoPreview} alt="Náhled" className="w-20 h-20 object-cover rounded-full border-2 border-border" />
                     )}
                     <input
                       type="file"
                       accept="image/*"
                       onChange={handleLogoChange}
-                      className="w-full px-3 py-2 rounded-lg glass-input text-white file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-violet-600 file:text-white file:cursor-pointer text-sm"
+                      className="w-full px-3 py-2 rounded-lg glass-input text-foreground file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-violet-600 file:text-white file:cursor-pointer text-sm"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-white/80 font-medium mb-2">Doporučující kód</label>
+                  <label className="block text-foreground/80 font-medium mb-2">Doporučující kód</label>
                   <input
                     type="text"
                     value={formData.referrerId}
@@ -741,7 +745,7 @@ export default function RegisterPage() {
                         });
                       }
                     }}
-                    className={`w-full px-4 py-2 rounded-lg glass-input text-white placeholder-white/40 text-sm ${
+                    className={`w-full px-4 py-2 rounded-lg glass-input text-foreground placeholder-muted-foreground text-sm ${
                       fieldErrors.referrerId ? 'border-2 border-red-500 bg-red-500/10' : ''
                     }`}
                     placeholder="ID týmu, který vás doporučil"
@@ -755,31 +759,42 @@ export default function RegisterPage() {
           </div>
 
           {error && (
-            <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 rounded-lg">
+            <motion.div
+              className="bg-red-500/20 border border-red-500 text-red-700 dark:text-red-200 px-4 py-3 rounded-lg"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+            >
               <div className="flex items-start space-x-2">
                 <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div className="flex-1">
-                  <p className="font-semibold text-red-300 mb-1">Chyba</p>
+                  <p className="font-semibold text-red-700 dark:text-red-300 mb-1">Chyba</p>
                   <p className="text-sm">{error}</p>
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
-          <button
+          <motion.button
             type="submit"
             disabled={loading}
             className="w-full py-4 bg-violet-500 hover:bg-violet-600 text-white font-semibold text-lg rounded-2xl shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden flex items-center justify-center space-x-2"
+            whileHover={loading ? undefined : { y: -1.5, scale: 1.01 }}
+            whileTap={loading ? undefined : { scale: 0.98 }}
           >
             {loading && <LoadingSpinner size="sm" />}
             <span className="relative z-10">{loading ? 'Registruji...' : 'Registrovat tým'}</span>
-          </button>
+          </motion.button>
 
+          <MotionItem delay={0.08}>
+            <p className="text-center text-xs text-foreground/60">
+              Formulář odešlete až po kontrole všech povinných polí.
+            </p>
+          </MotionItem>
         </form>
-      </div>
+      </MotionPage>
     </div>
   );
 }
-

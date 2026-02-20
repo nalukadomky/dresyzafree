@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { supabaseAdmin } from './supabase-server';
+import { supabase } from './supabase';
 import { db } from './db-supabase';
 
 export async function hashPassword(password: string): Promise<string> {
@@ -10,11 +11,34 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
+async function fetchTeamRow(trimmed: string, client: any) {
+  let row: Record<string, unknown> | null = null;
+  let lastError: unknown = null;
+  // Použijeme ilike pro shodu bez ohledu na velikost písmen (jako check-reset-team)
+  const { data: byUsername, error: errU } = await client
+    .from('teams')
+    .select('*')
+    .ilike('username', trimmed)
+    .maybeSingle();
+  if (!errU && byUsername) row = byUsername as Record<string, unknown>;
+  if (!row) {
+    lastError = errU;
+    const { data: byEmail, error: errE } = await client
+      .from('teams')
+      .select('*')
+      .ilike('email', trimmed)
+      .maybeSingle();
+    if (!errE && byEmail) row = byEmail as Record<string, unknown>;
+    if (!row) lastError = errE || lastError;
+  }
+  return { row, error: lastError };
+}
+
 export async function verifyTeam(identifier: string, password: string) {
   const trimmed = (identifier || '').trim();
   if (!trimmed) return null;
 
-  const client = supabaseAdmin;
+  const client = supabaseAdmin ?? supabase;
   if (!client) {
     return db.teams.getByUsernameOrEmail(trimmed).then(async (team) => {
       if (!team?.password) return null;
@@ -26,12 +50,15 @@ export async function verifyTeam(identifier: string, password: string) {
   }
 
   let row: Record<string, unknown> | null = null;
-  const { data: byUsername } = await client.from('teams').select('*').eq('username', trimmed).maybeSingle();
-  if (byUsername) row = byUsername as Record<string, unknown>;
-  if (!row) {
-    const { data: byEmail } = await client.from('teams').select('*').eq('email', trimmed).maybeSingle();
-    if (byEmail) row = byEmail as Record<string, unknown>;
+  const { row: r, error } = await fetchTeamRow(trimmed, client);
+  row = r;
+
+  // Když admin klient selže (např. "fetch failed" – síť/proxy), zkus anon klienta
+  if (!row && error && supabase && supabase !== client) {
+    const res = await fetchTeamRow(trimmed, supabase);
+    row = res.row;
   }
+
   if (!row?.password) return null;
 
   const ok = await verifyPassword(password, String(row.password));
@@ -67,6 +94,6 @@ export async function verifyTeam(identifier: string, password: string) {
 
 export async function verifyAdmin(username: string, password: string) {
   const admin = await db.admin.get();
-  if (admin.username !== username) return false;
+  if (admin.username.toLowerCase() !== username.trim().toLowerCase()) return false;
   return verifyPassword(password, admin.password);
 }

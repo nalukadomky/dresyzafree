@@ -3,13 +3,14 @@ import { supabase } from './supabase';
 
 const client = supabaseAdmin ?? supabase;
 if (!client) {
-  throw new Error('Supabase není nakonfigurován. Nastavte NEXT_PUBLIC_SUPABASE_URL a (NEXT_PUBLIC_SUPABASE_ANON_KEY nebo SUPABASE_SERVICE_ROLE_KEY) v .env.local');
+  console.warn('Supabase není nakonfigurován. Nastavte NEXT_PUBLIC_SUPABASE_URL a (NEXT_PUBLIC_SUPABASE_ANON_KEY nebo SUPABASE_SERVICE_ROLE_KEY) v .env.local nebo v proměnných prostředí Vercelu.');
 }
 
 export interface Player {
   id: string;
   teamId: string;
   name: string;
+  photoUrl?: string;
   createdAt: string;
 }
 
@@ -39,6 +40,7 @@ const mapPlayer = (row: any): Player => ({
   id: row.id,
   teamId: row.team_id,
   name: row.name,
+  photoUrl: row.photo_url || undefined,
   createdAt: row.created_at,
 });
 
@@ -58,7 +60,7 @@ const mapMatch = (row: any): Match => ({
 export const dbPlayers = {
   players: {
     getByTeamId: async (teamId: string): Promise<Player[]> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('players')
         .select('*')
         .eq('team_id', teamId)
@@ -67,7 +69,7 @@ export const dbPlayers = {
       return (data || []).map(mapPlayer);
     },
     getById: async (id: string, teamId: string): Promise<Player | null> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('players')
         .select('*')
         .eq('id', id)
@@ -77,7 +79,7 @@ export const dbPlayers = {
       return mapPlayer(data);
     },
     add: async (teamId: string, name: string): Promise<Player> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('players')
         .insert({ team_id: teamId, name: name.trim() })
         .select()
@@ -86,7 +88,7 @@ export const dbPlayers = {
       return mapPlayer(data);
     },
     delete: async (id: string, teamId: string): Promise<boolean> => {
-      const { error } = await client
+      const { error } = await client!
         .from('players')
         .delete()
         .eq('id', id)
@@ -94,10 +96,21 @@ export const dbPlayers = {
       if (error) throw new Error(error.message);
       return true;
     },
+    updatePhoto: async (id: string, teamId: string, photoUrl: string): Promise<Player | null> => {
+      const { data, error } = await client!
+        .from('players')
+        .update({ photo_url: photoUrl })
+        .eq('id', id)
+        .eq('team_id', teamId)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data ? mapPlayer(data) : null;
+    },
   },
   matches: {
     getByTeamId: async (teamId: string): Promise<Match[]> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('matches')
         .select('*')
         .eq('team_id', teamId)
@@ -115,7 +128,7 @@ export const dbPlayers = {
       goalsAgainst?: number,
       startTime?: string
     ): Promise<Match> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('matches')
         .insert({
           team_id: teamId,
@@ -142,7 +155,7 @@ export const dbPlayers = {
       if ('goalsFor' in updates) toUpdate.goals_for = updates.goalsFor ?? null;
       if ('goalsAgainst' in updates) toUpdate.goals_against = updates.goalsAgainst ?? null;
       if (Object.keys(toUpdate).length === 0) return null;
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('matches')
         .update(toUpdate)
         .eq('id', matchId)
@@ -153,7 +166,7 @@ export const dbPlayers = {
       return data ? mapMatch(data) : null;
     },
     delete: async (id: string, teamId: string): Promise<boolean> => {
-      const { error } = await client
+      const { error } = await client!
         .from('matches')
         .delete()
         .eq('id', id)
@@ -164,7 +177,7 @@ export const dbPlayers = {
   },
   matchScorers: {
     getScorers: async (matchId: string): Promise<{ goalOrder: number; playerId: string }[]> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('match_goal_scorers')
         .select('goal_order, player_id')
         .eq('match_id', matchId)
@@ -176,7 +189,7 @@ export const dbPlayers = {
       }));
     },
     getAssists: async (matchId: string): Promise<{ assistOrder: number; playerId: string }[]> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('match_assists')
         .select('assist_order, player_id')
         .eq('match_id', matchId)
@@ -193,18 +206,18 @@ export const dbPlayers = {
       scorers: { goalOrder: number; playerId: string }[],
       assists: { assistOrder: number; playerId: string }[]
     ): Promise<void> => {
-      const match = await client.from('matches').select('team_id').eq('id', matchId).eq('team_id', teamId).single();
+      const match = await client!.from('matches').select('team_id').eq('id', matchId).eq('team_id', teamId).single();
       if (match.error || !match.data) throw new Error('Zápas nenalezen');
-      await client.from('match_goal_scorers').delete().eq('match_id', matchId);
-      await client.from('match_assists').delete().eq('match_id', matchId);
+      await client!.from('match_goal_scorers').delete().eq('match_id', matchId);
+      await client!.from('match_assists').delete().eq('match_id', matchId);
       if (scorers.length > 0) {
         const rows = scorers.map((s) => ({ match_id: matchId, player_id: s.playerId, goal_order: s.goalOrder }));
-        const { error: e1 } = await client.from('match_goal_scorers').insert(rows);
+        const { error: e1 } = await client!!.from('match_goal_scorers').insert(rows);
         if (e1) throw new Error(e1.message);
       }
       if (assists.length > 0) {
         const rows = assists.map((a) => ({ match_id: matchId, player_id: a.playerId, assist_order: a.assistOrder }));
-        const { error: e2 } = await client.from('match_assists').insert(rows);
+        const { error: e2 } = await client!!.from('match_assists').insert(rows);
         if (e2) throw new Error(e2.message);
       }
     },
@@ -213,7 +226,7 @@ export const dbPlayers = {
       teamId: string,
       options?: { season?: string }
     ): Promise<{ playerId: string; playerName: string; goals: number; assists: number; total: number }[]> => {
-      const matchesRes = await client.from('matches').select('id, date').eq('team_id', teamId);
+      const matchesRes = await client!.from('matches').select('id, date').eq('team_id', teamId);
       let matchIds = (matchesRes.data || []).map((m: { id: string }) => m.id);
       const matchesWithDate = (matchesRes.data || []) as { id: string; date: string }[];
       if (options?.season) {
@@ -229,9 +242,9 @@ export const dbPlayers = {
       }
       if (matchIds.length === 0) return [];
       const [scorersRes, assistsRes, playersRes] = await Promise.all([
-        client.from('match_goal_scorers').select('player_id').in('match_id', matchIds),
-        client.from('match_assists').select('player_id').in('match_id', matchIds),
-        client.from('players').select('id, name').eq('team_id', teamId),
+        client!.from('match_goal_scorers').select('player_id').in('match_id', matchIds),
+        client!.from('match_assists').select('player_id').in('match_id', matchIds),
+        client!.from('players').select('id, name').eq('team_id', teamId),
       ]);
       const players = (playersRes.data || []) as { id: string; name: string }[];
       const byPlayer: Record<string, { goals: number; assists: number }> = {};
@@ -284,7 +297,7 @@ export const dbPlayers = {
         rated_player_id: r.ratedPlayerId,
         percentage: Math.round(Math.min(10, Math.max(0, r.percentage))),
       }));
-      const { error } = await client.from('ratings').insert(rows);
+      const { error } = await client!!.from('ratings').insert(rows);
       if (error) throw new Error(error.message);
     },
     getLeaderboard: async (
@@ -292,7 +305,7 @@ export const dbPlayers = {
       coachPlayerId?: string | null,
       options?: { matchId?: string; season?: string }
     ): Promise<{ playerId: string; playerName: string; avgScore: number; voteCount: number }[]> => {
-      const matchesRes = await client.from('matches').select('id, date').eq('team_id', teamId);
+      const matchesRes = await client!.from('matches').select('id, date').eq('team_id', teamId);
       let matchIds = (matchesRes.data || []).map((m) => m.id);
       const matchesWithDate = (matchesRes.data || []) as { id: string; date: string }[];
 
@@ -311,11 +324,11 @@ export const dbPlayers = {
       }
       if (matchIds.length === 0) return [];
 
-      const { data: ratings } = await client
+      const { data: ratings } = await client!
         .from('ratings')
         .select('match_id, rated_player_id, voter_player_id, percentage')
         .in('match_id', matchIds);
-      const { data: players } = await client.from('players').select('id, name').eq('team_id', teamId);
+      const { data: players } = await client!!.from('players').select('id, name').eq('team_id', teamId);
       if (!ratings || !players) return [];
 
       // Pro každé (match_id, rated_player_id) spočítat počet ne-trenérských hlasů
@@ -372,7 +385,7 @@ export const dbPlayers = {
       return result;
     },
     hasVoted: async (matchId: string, voterPlayerId: string): Promise<boolean> => {
-      const { data } = await client
+      const { data } = await client!!
         .from('ratings')
         .select('id')
         .eq('match_id', matchId)

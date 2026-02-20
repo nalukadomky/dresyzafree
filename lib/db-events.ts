@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 
 const client = supabaseAdmin ?? supabase;
 if (!client) {
-  throw new Error('Supabase není nakonfigurován. Nastavte NEXT_PUBLIC_SUPABASE_URL a (NEXT_PUBLIC_SUPABASE_ANON_KEY nebo SUPABASE_SERVICE_ROLE_KEY) v .env.local');
+  console.warn('Supabase není nakonfigurován. Nastavte NEXT_PUBLIC_SUPABASE_URL a (NEXT_PUBLIC_SUPABASE_ANON_KEY nebo SUPABASE_SERVICE_ROLE_KEY) v .env.local nebo v proměnných prostředí Vercelu.');
 }
 
 export type EventType = 'training' | 'friendly_match' | 'competitive_match';
@@ -70,7 +70,7 @@ const mapEvent = (row: Record<string, unknown>): Event => ({
 export const dbEvents = {
   events: {
     getByTeamId: async (teamId: string): Promise<Event[]> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('events')
         .select('*')
         .eq('team_id', teamId)
@@ -97,13 +97,13 @@ export const dbEvents = {
         start_time: (startTime?.trim() && /^\d{1,2}:\d{2}$/.test(startTime.trim())) ? startTime.trim() : null,
         note: note?.trim() || null,
       };
-      let { data, error } = await client
+      let { data, error } = await client!
         .from('events')
         .insert({ ...baseRow, share_token: crypto.randomUUID() })
         .select()
         .single();
       if (error?.message?.includes('share_token') || error?.message?.includes('does not exist')) {
-        const fallback = await client.from('events').insert(baseRow).select().single();
+        const fallback = await client!.from('events').insert(baseRow).select().single();
         if (fallback.error) throw new Error(fallback.error.message);
         data = fallback.data;
       } else if (error) {
@@ -113,7 +113,7 @@ export const dbEvents = {
     },
 
     getById: async (eventId: string, teamId: string): Promise<Event | null> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('events')
         .select('*')
         .eq('id', eventId)
@@ -124,7 +124,7 @@ export const dbEvents = {
     },
 
     getByShareToken: async (shareToken: string): Promise<Event | null> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('events')
         .select('*')
         .eq('share_token', shareToken)
@@ -134,7 +134,7 @@ export const dbEvents = {
     },
 
     delete: async (eventId: string, teamId: string): Promise<boolean> => {
-      const { error } = await client
+      const { error } = await client!
         .from('events')
         .delete()
         .eq('id', eventId)
@@ -144,7 +144,7 @@ export const dbEvents = {
     },
 
     finalizeAttendance: async (eventId: string, teamId: string): Promise<void> => {
-      const { error } = await client
+      const { error } = await client!
         .from('events')
         .update({ attendance_finalized_at: new Date().toISOString() })
         .eq('id', eventId)
@@ -155,7 +155,7 @@ export const dbEvents = {
 
   attendance: {
     getByEventId: async (eventId: string): Promise<{ playerId: string; attended: boolean; absenceReason?: string }[]> => {
-      const { data, error } = await client
+      const { data, error } = await client!
         .from('event_attendance')
         .select('player_id, attended, absence_reason')
         .eq('event_id', eventId);
@@ -173,8 +173,8 @@ export const dbEvents = {
     ): Promise<Record<string, { attended: number; notAttended: number; noResponse: number }>> => {
       if (eventIds.length === 0) return {};
       const [playersRes, attendanceRes] = await Promise.all([
-        client.from('players').select('id').eq('team_id', teamId),
-        client
+        client!.from('players').select('id').eq('team_id', teamId),
+        client!
           .from('event_attendance')
           .select('event_id, attended')
           .in('event_id', eventIds),
@@ -204,7 +204,7 @@ export const dbEvents = {
       playerId: string,
       attended: boolean
     ): Promise<void> => {
-      const { error } = await client
+      const { error } = await client!
         .from('event_attendance')
         .upsert(
           { event_id: eventId, player_id: playerId, attended, absence_reason: attended ? null : undefined },
@@ -229,7 +229,7 @@ export const dbEvents = {
       } else {
         row.absence_reason = null;
       }
-      const { error } = await client
+      const { error } = await client!
         .from('event_attendance')
         .upsert(row, { onConflict: 'event_id,player_id' });
       if (error) throw new Error(error.message);
@@ -245,7 +245,7 @@ export const dbEvents = {
         player_id: playerId,
         attended: true,
       }));
-      const { error } = await client
+      const { error } = await client!
         .from('event_attendance')
         .upsert(rows, { onConflict: 'event_id,player_id' });
       if (error) throw new Error(error.message);
@@ -256,14 +256,14 @@ export const dbEvents = {
       attendance: { playerId: string; attended: boolean; absenceReason?: string }[]
     ): Promise<void> => {
       if (attendance.length === 0) return;
-      await client.from('event_attendance').delete().eq('event_id', eventId);
+      await client!.from('event_attendance').delete().eq('event_id', eventId);
       const rows = attendance.map((a) => ({
         event_id: eventId,
         player_id: a.playerId,
         attended: a.attended,
         absence_reason: a.attended ? null : (a.absenceReason || '').trim() || null,
       }));
-      const { error } = await client.from('event_attendance').insert(rows);
+      const { error } = await client!.from('event_attendance').insert(rows);
       if (error) throw new Error(error.message);
     },
   },
@@ -275,10 +275,10 @@ export const dbEvents = {
     { playerId: string; playerName: string; attendancePct: number; avgMatchScore: number; trainingCount: number; matchCount: number }[]
   > => {
     const [eventsRes, playersRes, attendanceRes, matchesRes] = await Promise.all([
-      client.from('events').select('id, event_type').eq('team_id', teamId),
-      client.from('players').select('id, name').eq('team_id', teamId),
-      client.from('event_attendance').select('event_id, player_id, attended'),
-      client.from('matches').select('id').eq('team_id', teamId),
+      client!.from('events').select('id, event_type').eq('team_id', teamId),
+      client!.from('players').select('id, name').eq('team_id', teamId),
+      client!.from('event_attendance').select('event_id, player_id, attended'),
+      client!.from('matches').select('id').eq('team_id', teamId),
     ]);
 
     const events = eventsRes.data || [];
@@ -313,7 +313,7 @@ export const dbEvents = {
     }
 
     if (matchIds.length > 0) {
-      const { data: ratingsData } = await client
+      const { data: ratingsData } = await client!
         .from('ratings')
         .select('rated_player_id, percentage')
         .in('match_id', matchIds);

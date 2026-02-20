@@ -3,13 +3,26 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { GhostHodnoceni } from '@/components/GhostLoader';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import TacticsBoard from '@/components/TacticsBoard';
+import ThemeToggle from '@/components/ThemeToggle';
+import { MotionPage } from '@/components/Motion';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface Player {
   id: string;
   teamId: string;
   name: string;
+  photoUrl?: string;
 }
 
 interface Match {
@@ -73,6 +86,15 @@ function getSeasonFromDate(dateStr: string): string {
   const month = d.getMonth() + 1; // 1-12
   if (month >= 7) return `${year}/${String(year + 1).slice(-2)}`;
   return `${year - 1}/${String(year).slice(-2)}`;
+}
+
+/** Odpovědi na účast se uzavírají den před událostí do půlnoci. */
+function isUcastClosed(dateStr: string): boolean {
+  const eventDate = new Date(dateStr + 'T12:00:00');
+  const deadline = new Date(eventDate);
+  deadline.setDate(deadline.getDate() - 1);
+  deadline.setHours(0, 0, 0, 0);
+  return new Date() >= deadline;
 }
 
 function formatMatchScore(m: Match, teamLabel: string, opponentLabel: string): string | null {
@@ -155,7 +177,7 @@ function MatchResultEdit({
     return (
       <span ref={editRef} className="flex items-center gap-2">
         <span className="flex flex-col items-center gap-0.5">
-          <span className="text-white/70 text-xs">{teamLabel}</span>
+          <span className="text-foreground/70 text-xs">{teamLabel}</span>
           <input
             type="number"
             min={0}
@@ -163,13 +185,13 @@ function MatchResultEdit({
             onChange={(e) => setGoalsFor(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && save()}
             placeholder="0"
-            className="w-12 px-2 py-1 rounded glass-input text-white text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            className="w-12 px-2 py-1 rounded glass-input text-foreground text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             autoFocus
           />
         </span>
-        <span className="text-white/60 text-lg pt-4">:</span>
+        <span className="text-foreground/60 text-lg pt-4">:</span>
         <span className="flex flex-col items-center gap-0.5">
-          <span className="text-white/70 text-xs">{opponentLabel}</span>
+          <span className="text-foreground/70 text-xs">{opponentLabel}</span>
           <input
             type="number"
             min={0}
@@ -177,7 +199,7 @@ function MatchResultEdit({
             onChange={(e) => setGoalsAgainst(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && save()}
             placeholder="0"
-            className="w-12 px-2 py-1 rounded glass-input text-white text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            className="w-12 px-2 py-1 rounded glass-input text-foreground text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
         </span>
         <span className="flex gap-1 pt-4">
@@ -191,7 +213,7 @@ function MatchResultEdit({
               setGoalsAgainst(match.goalsAgainst ?? '');
               setEditing(false);
             }}
-            className="text-white/60 hover:text-white text-xs"
+            className="text-foreground/60 hover:text-foreground text-xs"
           >
             ✕
           </button>
@@ -207,7 +229,7 @@ function MatchResultEdit({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="text-violet-400 hover:text-violet-300 text-sm px-3 py-1 rounded hover:bg-white/5"
+        className="text-violet-400 hover:text-violet-300 text-sm px-3 py-1 rounded hover:bg-surface"
         title={scoreFull ? `${scoreFull} – upravit` : 'Přidat skóre'}
       >
         {scoreShort ?? 'Přidat skóre'}
@@ -227,19 +249,92 @@ const EVENT_TYPE_LABELS: Record<EventType, string> = {
   competitive_match: 'Zápas mistrovský',
 };
 
+/** Vždy zobrazí datum a přesný čas začátku události/tréninku/zápasu. */
+function formatEventDateTime(date: string, startTime?: string): string {
+  const dateStr = new Date(date + 'T12:00:00').toLocaleDateString('cs-CZ');
+  return startTime && /^\d{1,2}:\d{2}$/.test(startTime.trim())
+    ? `${dateStr} ${startTime.trim()}`
+    : `${dateStr}, čas neuveden`;
+}
+
+/** Pozitivní, motivující emojis – žádné toxické negativní symboly. Nižší skóre = prostor k růstu. */
 const RATING_EMOJI: Record<number, string> = {
   0: '—',
-  1: '😞',
-  2: '😕',
-  3: '😐',
-  4: '🙂',
-  5: '😊',
-  6: '👍',
-  7: '💪',
-  8: '⭐',
-  9: '🔥',
-  10: '🚀',
+  1: '🌱',  // potenciál
+  2: '📈',  // zlepšení
+  3: '👍',  // solidní
+  4: '🙂',  // dobré
+  5: '😊',  // pěkná práce
+  6: '💪',  // silný výkon
+  7: '⭐',  // vynikající
+  8: '🔥',  // skvělé
+  9: '🚀',  // mimořádné
+  10: '🏆', // nejlepší
 };
+
+/** Konstruktivní popisky pro tooltip – podporují týmovou atmosféru. */
+const RATING_LABELS: Record<number, string> = {
+  0: 'Nebyl nasazen',
+  1: 'Má potenciál',
+  2: 'Na dobré cestě',
+  3: 'Solidní výkon',
+  4: 'Dobře přispěl',
+  5: 'Pěkná práce',
+  6: 'Silný výkon',
+  7: 'Vynikající',
+  8: 'Skvělé',
+  9: 'Mimořádné',
+  10: 'Nejlepší',
+};
+
+type BadgeId = 'střelec' | 'dříč' | 'král_asistencí';
+
+const BADGES: { id: BadgeId; label: string; icon: string; title: string }[] = [
+  { id: 'střelec', label: 'Střelec', icon: '⚽', title: 'Nejvíce gólů' },
+  { id: 'dříč', label: 'Dříč', icon: '💪', title: 'Nejlepší docházka na tréninky' },
+  { id: 'král_asistencí', label: 'Král asistencí', icon: '👑', title: 'Nejvíce asistencí' },
+];
+
+/** Přezdívka a ikona podle hodnocení a statistik – pro hráčskou kartu. */
+function getPlayerNicknameAndIcon(
+  entry: LeaderboardEntry,
+  badges: BadgeId[],
+  canadianStats: CanadianEntry[],
+  _attendanceStats: AttendanceStat[]
+): { nickname: string; icon: string } {
+  if (badges.includes('střelec')) return { nickname: 'Střelec', icon: '⚽' };
+  if (badges.includes('král_asistencí')) return { nickname: 'Král asistencí', icon: '👑' };
+  if (badges.includes('dříč')) return { nickname: 'Dříč', icon: '💪' };
+  const s = entry.avgScore;
+  if (s >= 9) return { nickname: 'Rychlík', icon: '🚀' };
+  if (s >= 8) return { nickname: 'Hvězda', icon: '⭐' };
+  if (s >= 7) return { nickname: 'Bojovník', icon: '💪' };
+  if (s >= 6) return { nickname: 'Solidní', icon: '👍' };
+  if (s >= 5) return { nickname: 'Spolehlivý', icon: '🙂' };
+  return { nickname: 'Týmový hráč', icon: '🤝' };
+}
+
+function getPlayerBadges(
+  playerId: string,
+  canadianStats: CanadianEntry[],
+  attendanceStats: AttendanceStat[]
+): BadgeId[] {
+  const badges: BadgeId[] = [];
+  if (canadianStats.length > 0) {
+    const topGoals = canadianStats.filter((c) => c.goals > 0).sort((a, b) => b.goals - a.goals)[0];
+    if (topGoals?.playerId === playerId) badges.push('střelec');
+    const topAssists = canadianStats.filter((c) => c.assists > 0).sort((a, b) => b.assists - a.assists)[0];
+    if (topAssists?.playerId === playerId) badges.push('král_asistencí');
+  }
+  if (attendanceStats.length > 0) {
+    const withTrainings = attendanceStats.filter((s) => s.trainingCount > 0);
+    if (withTrainings.length > 0) {
+      const topAttendance = [...withTrainings].sort((a, b) => b.attendancePct - a.attendancePct)[0];
+      if (topAttendance?.playerId === playerId) badges.push('dříč');
+    }
+  }
+  return badges;
+}
 
 function HodnoceniHracuContent() {
   const router = useRouter();
@@ -261,6 +356,7 @@ function HodnoceniHracuContent() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [playerCardModal, setPlayerCardModal] = useState<LeaderboardEntry | null>(null);
 
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newMatchDate, setNewMatchDate] = useState('');
@@ -289,6 +385,9 @@ function HodnoceniHracuContent() {
   const [matchScorersSaving, setMatchScorersSaving] = useState<string | null>(null);
 
   const [events, setEvents] = useState<Event[]>([]);
+  const [ucastModal, setUcastModal] = useState<Event | null>(null);
+  const [ucastModalFinalized, setUcastModalFinalized] = useState(false);
+  const [ucastModalData, setUcastModalData] = useState<{ playerId: string; attended: boolean; absenceReason?: string; responded: boolean }[]>([]);
   const [attendanceModal, setAttendanceModal] = useState<Event | null>(null);
   const [attendanceModalClosed, setAttendanceModalClosed] = useState(false);
   const [attendanceModalFinalized, setAttendanceModalFinalized] = useState(false);
@@ -377,6 +476,20 @@ function HodnoceniHracuContent() {
   }, [tab, teamId, token]);
 
   useEffect(() => {
+    if (tab !== 'leaderboard' || !teamId || !token) return;
+    fetchAttendanceStats();
+    const params = new URLSearchParams();
+    if (leaderboardFilter.startsWith('season:')) params.set('season', leaderboardFilter.slice(7));
+    fetch(`/api/teams/${teamId}/canadian-scoring${params.toString() ? `?${params}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d: { stats?: CanadianEntry[] }) => setCanadianStats(d?.stats || []))
+      .catch(() => setCanadianStats([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, teamId, token, leaderboardFilter]);
+
+  useEffect(() => {
     if (!teamId || !token || events.length === 0) return;
     const today = new Date().toISOString().slice(0, 10);
     const upcomingIds = events.filter((e) => e.date >= today).slice(0, 10).map((e) => e.id);
@@ -461,6 +574,16 @@ function HodnoceniHracuContent() {
   const addEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEventDate || !teamId || !token) return;
+    const time = newEventStartTime.trim();
+    if (!time || !/^\d{1,2}:\d{2}$/.test(time)) {
+      alert('Vyplňte prosím čas začátku události.');
+      return;
+    }
+    const location = newEventLocation.trim();
+    if (!location) {
+      alert('Vyplňte prosím místo konání události.');
+      return;
+    }
     setAddingEvent(true);
     try {
       const res = await fetch(`/api/teams/${teamId}/events`, {
@@ -469,9 +592,9 @@ function HodnoceniHracuContent() {
         body: JSON.stringify({
           date: newEventDate,
           eventType: newEventType,
-          location: newEventLocation.trim() || undefined,
+          location,
           opponent: (newEventType !== 'training' ? newEventOpponent : undefined)?.trim() || undefined,
-          startTime: newEventStartTime.trim() || undefined,
+          startTime: time,
           note: newEventNote.trim() || undefined,
         }),
       });
@@ -506,7 +629,33 @@ function HodnoceniHracuContent() {
     }
   };
 
-  const openAttendanceModal = async (ev: Event) => {
+  /** Účast – před událostí: odkaz pro hráče + přehled odpovědí (kdo přijde / nepřijde). Hráči se označí nejpozději do půlnoci předchozího dne. */
+  const openUcastModal = async (ev: Event) => {
+    setUcastModal(ev);
+    const res = await fetch(`/api/teams/${teamId}/events/${ev.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) {
+      const data = await res.json();
+      setUcastModalFinalized(data.event?.attendanceFinalized ?? false);
+      const current = (data.attendance || []) as { playerId: string; attended: boolean; absenceReason?: string }[];
+      const byPlayer = Object.fromEntries(current.map((a) => [a.playerId, a]));
+      setUcastModalData(
+        players.map((p) => {
+          const a = byPlayer[p.id];
+          return {
+            playerId: p.id,
+            attended: a?.attended ?? false,
+            absenceReason: a?.absenceReason,
+            responded: a !== undefined,
+          };
+        })
+      );
+    } else {
+      setUcastModalData(players.map((p) => ({ playerId: p.id, attended: false, absenceReason: undefined, responded: false })));
+    }
+  };
+
+  /** Docházka – po události: trenér finálně zaznamená, kdo skutečně přišel (jednorázové odeslání). */
+  const openDochazkaModal = async (ev: Event) => {
     setAttendanceModal(ev);
     setAttendanceModalClosed(false);
     setAttendanceModalFinalized(false);
@@ -654,6 +803,11 @@ function HodnoceniHracuContent() {
       alert('Chybí datum nebo nejste přihlášeni.');
       return;
     }
+    const time = newMatchStartTime.trim();
+    if (!time || !/^\d{1,2}:\d{2}$/.test(time)) {
+      alert('Vyplňte prosím čas začátku zápasu.');
+      return;
+    }
     setAddingMatch(true);
     try {
       const res = await fetch(`/api/teams/${teamId}/matches`, {
@@ -662,7 +816,7 @@ function HodnoceniHracuContent() {
         body: JSON.stringify({
           date: newMatchDate,
           opponent: newMatchOpponent.trim() || undefined,
-          startTime: newMatchStartTime.trim() || undefined,
+          startTime: time,
         }),
       });
       const d = await res.json().catch(() => ({}));
@@ -844,9 +998,12 @@ function HodnoceniHracuContent() {
         fetchLeaderboard();
         setTimeout(() => setVoteSubmittedSuccess(false), 5000);
       } else {
-        const d = await res.json();
-        alert(d.error || 'Chyba');
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || `Chyba při odesílání (${res.status})`);
       }
+    } catch (err) {
+      console.error('Chyba při odesílání hodnocení:', err);
+      alert('Chyba připojení. Zkuste to znovu.');
     } finally {
       setSubmitting(false);
     }
@@ -854,8 +1011,8 @@ function HodnoceniHracuContent() {
 
   if (loading || !teamId) {
     return (
-      <div className="min-h-screen animated-background flex items-center justify-center">
-        <LoadingSpinner size="lg" />
+      <div className="min-h-screen animated-background py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
+        <GhostHodnoceni />
       </div>
     );
   }
@@ -867,17 +1024,17 @@ function HodnoceniHracuContent() {
     >
       {/* Modální okno pro potvrzení mazání hráče */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)}>
-          <div className="glass-card rounded-2xl p-6 w-full max-w-md shadow-2xl border border-white/10" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-white mb-2">Odstranit hráče</h3>
-            <p className="text-white/80 mb-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm" onClick={() => setDeleteConfirm(null)}>
+          <div className="glass-card rounded-2xl p-6 w-full max-w-md shadow-2xl border border-border" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-foreground mb-2">Odstranit hráče</h3>
+            <p className="text-foreground/80 mb-6">
               Opravdu odstranit hráče „{deleteConfirm.playerName}"?
             </p>
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => setDeleteConfirm(null)}
-                className="flex-1 px-5 py-3 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors font-medium whitespace-nowrap"
+                className="flex-1 px-5 py-3 rounded-xl bg-surface-hover text-foreground hover:bg-white/20 transition-colors font-medium whitespace-nowrap"
               >
                 Ne, zrušit
               </button>
@@ -896,7 +1053,7 @@ function HodnoceniHracuContent() {
       {/* Hláška po smazání */}
       {deleteFeedback && (
         <div
-          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-6 py-4 rounded-xl text-white font-medium shadow-lg border border-white/20 whitespace-nowrap ${
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-6 py-4 rounded-xl text-white font-medium shadow-lg border border-border whitespace-nowrap ${
             deleteFeedback.startsWith('success:') ? 'bg-green-600/95' : 'bg-red-600/95'
           }`}
         >
@@ -904,18 +1061,21 @@ function HodnoceniHracuContent() {
         </div>
       )}
 
-      <Link
-        href="/dashboard"
-        className="fixed top-3 left-3 sm:top-4 sm:left-4 px-3 py-2 sm:px-4 sm:py-2.5 glass-card text-white/90 rounded-xl border border-white/10 hover:bg-white/5 flex items-center gap-2 z-10 text-sm sm:text-base"
-      >
-        <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-        </svg>
-        Zpět
-      </Link>
+      <div className="fixed top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 flex justify-between items-center z-20">
+        <Link
+          href="/dashboard"
+          className="px-3 py-2 sm:px-4 sm:py-2.5 glass-card text-foreground/90 rounded-xl border border-border hover:bg-surface flex items-center gap-2 text-sm sm:text-base"
+        >
+          <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Zpět
+        </Link>
+        <ThemeToggle />
+      </div>
 
-      <div className="w-full max-w-7xl mx-auto relative z-10 pt-12 sm:pt-14">
-        <h1 className="text-xl sm:text-2xl font-semibold text-white mb-4 sm:mb-6">Hodnocení hráčů</h1>
+      <MotionPage className="w-full max-w-7xl mx-auto relative z-10 pt-12 sm:pt-14">
+        <h1 className="text-xl sm:text-2xl font-semibold text-foreground mb-4 sm:mb-6">Hodnocení hráčů</h1>
 
         <div className="flex gap-1.5 sm:gap-2 mb-4 sm:mb-6 overflow-x-auto pb-1 -mx-1 flex-nowrap sm:flex-wrap">
           {(['dashboard', 'manage', 'vote', 'leaderboard', 'canadian', 'calendar', 'taktika'] as Tab[]).map((t) => (
@@ -924,8 +1084,8 @@ function HodnoceniHracuContent() {
               onClick={() => setTab(t)}
               className={`shrink-0 px-3 py-2 sm:px-4 rounded-xl font-medium transition-all text-sm sm:text-base ${
                 tab === t
-                  ? 'bg-violet-500/30 text-white border border-violet-400/50'
-                  : 'bg-white/5 text-white/70 hover:bg-white/10 border border-white/10'
+                  ? 'bg-violet-500/30 text-foreground border border-violet-400/50'
+                  : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
               }`}
             >
               {t === 'dashboard' && 'Přehled'}
@@ -954,11 +1114,10 @@ function HodnoceniHracuContent() {
               const pom = lastMatch.playerOfMatch;
               return (
                 <div className="glass-card rounded-2xl p-4 sm:p-6 border border-amber-500/30 bg-amber-500/5 col-span-full">
-                  <h2 className="text-base sm:text-lg font-semibold text-white mb-2 sm:mb-3">Poslední odehraný zápas</h2>
+                  <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 sm:mb-3">Poslední odehraný zápas</h2>
                   <div className="space-y-1">
-                    <p className="text-white font-medium">
-                      {new Date(lastMatch.date).toLocaleDateString('cs-CZ')}
-                      {lastMatch.startTime ? ` ${lastMatch.startTime}` : ''} vs {lastMatch.opponent || 'soupeř'}
+                    <p className="text-foreground font-medium">
+                      {formatEventDateTime(lastMatch.date, lastMatch.startTime)} vs {lastMatch.opponent || 'soupeř'}
                     </p>
                     <p className="text-violet-400 font-semibold text-lg">{scoreStr}</p>
                     {pom && (
@@ -973,7 +1132,7 @@ function HodnoceniHracuContent() {
 
             {/* Následující události */}
             <div className="glass-card rounded-2xl p-4 sm:p-6">
-              <h2 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">Následující události</h2>
+              <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3 sm:mb-4">Následující události</h2>
               {(() => {
                 const today = new Date().toISOString().slice(0, 10);
                 const upcomingEvents = events.filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
@@ -981,7 +1140,7 @@ function HodnoceniHracuContent() {
                 const hasUpcoming = upcomingEvents.length > 0 || upcomingMatches.length > 0;
 
                 if (!hasUpcoming) {
-                  return <p className="text-white/50 italic">Zatím žádné nadcházející události ani zápasy.</p>;
+                  return <p className="text-foreground/50 italic">Zatím žádné nadcházející události ani zápasy.</p>;
                 }
 
                 return (
@@ -993,24 +1152,24 @@ function HodnoceniHracuContent() {
                           return (
                             <div
                               key={ev.id}
-                              className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 rounded-lg bg-white/5 border border-white/10 mb-2 gap-2"
+                              className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 rounded-lg bg-surface border border-border mb-2 gap-2"
                             >
-                              <span className="text-white text-sm sm:text-base min-w-0">
-                                {new Date(ev.date).toLocaleDateString('cs-CZ')}
-                                {ev.startTime ? ` ${ev.startTime}` : ''} – {EVENT_TYPE_LABELS[ev.eventType]}
+                              <span className="text-foreground text-sm sm:text-base min-w-0">
+                                {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType]}
                                 {ev.location && ` • ${ev.location}`}
                                 {ev.opponent && ev.opponent !== ev.location && ` vs ${ev.opponent}`}
                               </span>
                               <div className="flex items-center gap-3 shrink-0">
                                 {sum && (
-                                  <span className="text-white/60 text-xs tabular-nums whitespace-nowrap" title="zúčastní • nezúčastní • neodpověděli">
+                                  <span className="text-foreground/60 text-xs tabular-nums whitespace-nowrap" title="zúčastní • nezúčastní • neodpověděli">
                                     {sum.attended}✓ {sum.notAttended}✗ {sum.noResponse}?
                                   </span>
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => openAttendanceModal(ev)}
+                                  onClick={() => openUcastModal(ev)}
                                   className="text-violet-400 hover:text-violet-300 text-sm"
+                                  title="Odkaz pro hráče + přehled, kdo se hlásí (do půlnoci před událostí)"
                                 >
                                   Účast
                                 </button>
@@ -1022,7 +1181,7 @@ function HodnoceniHracuContent() {
                           <button
                             type="button"
                             onClick={() => setTab('calendar')}
-                            className="text-white/60 hover:text-white text-sm mt-2"
+                            className="text-foreground/60 hover:text-foreground text-sm mt-2"
                           >
                             Zobrazit všech {upcomingEvents.length} událostí →
                           </button>
@@ -1031,18 +1190,17 @@ function HodnoceniHracuContent() {
                     )}
                     {upcomingMatches.length > 0 && (
                       <div>
-                        <h3 className="text-white/70 text-sm font-medium mb-2">Zápasy</h3>
+                        <h3 className="text-foreground/70 text-sm font-medium mb-2">Zápasy</h3>
                         {upcomingMatches.slice(0, 3).map((m) => (
                           <div
                             key={m.id}
-                            className="py-2 px-3 rounded-lg bg-white/5 border border-white/10 mb-2 text-white"
+                            className="py-2 px-3 rounded-lg bg-surface border border-border mb-2 text-foreground"
                           >
-                            {new Date(m.date).toLocaleDateString('cs-CZ')}
-                            {m.startTime ? ` ${m.startTime}` : ''} vs {m.opponent || 'soupeř'}
+                            {formatEventDateTime(m.date, m.startTime)} vs {m.opponent || 'soupeř'}
                           </div>
                         ))}
                         {upcomingMatches.length > 3 && (
-                          <p className="text-white/50 text-sm mt-1">+ {upcomingMatches.length - 3} dalších</p>
+                          <p className="text-foreground/50 text-sm mt-1">+ {upcomingMatches.length - 3} dalších</p>
                         )}
                       </div>
                     )}
@@ -1053,12 +1211,12 @@ function HodnoceniHracuContent() {
 
             {/* Graf formy */}
             <div className="glass-card rounded-2xl p-4 sm:p-6 lg:col-span-2 xl:col-span-2">
-              <h2 className="text-base sm:text-lg font-semibold text-white mb-2">Forma týmu a hráčů</h2>
-              <p className="text-white/60 text-sm mb-4">
+              <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2">Forma týmu a hráčů</h2>
+              <p className="text-foreground/60 text-sm mb-4">
                 Na základě účasti na tréninzích, hodnocení ze zápasů a výsledků.
               </p>
               {attendanceStats.length === 0 ? (
-                <p className="text-white/50 italic text-sm">
+                <p className="text-foreground/50 italic text-sm">
                   Zatím nemáte dostatek dat. Přidejte tréninky, zaznamenávejte účast a hlasujte po zápasech.
                 </p>
               ) : (
@@ -1068,7 +1226,7 @@ function HodnoceniHracuContent() {
                     const withData = attendanceStats.filter((s) => s.trainingCount > 0 || s.matchCount > 0);
                     if (withData.length === 0)
                       return (
-                        <p className="text-white/50 italic text-sm">Zatím žádná data pro výpočet formy.</p>
+                        <p className="text-foreground/50 italic text-sm">Zatím žádná data pro výpočet formy.</p>
                       );
                     const avgAttendance =
                       withData.reduce((a, s) => a + s.attendancePct, 0) / withData.length;
@@ -1095,22 +1253,22 @@ function HodnoceniHracuContent() {
                     return (
                       <div className="space-y-4">
                         <div>
-                          <h3 className="text-white/80 font-medium mb-2 text-sm">Forma týmu</h3>
+                          <h3 className="text-foreground/80 font-medium mb-2 text-sm">Forma týmu</h3>
                           <div className="flex gap-4 flex-wrap">
                             <div className="flex-1 min-w-[120px]">
                               <div className="flex justify-between text-xs mb-1">
-                                <span className="text-white/70">Forma</span>
+                                <span className="text-foreground/70">Forma</span>
                                 <span className="text-violet-400 font-semibold">{formScore} %</span>
                               </div>
-                              <div className="h-3 rounded-full bg-white/10 overflow-hidden">
+                              <div className="h-3 rounded-full bg-surface-hover overflow-hidden">
                                 <div
-                                  className="h-full bg-gradient-to-r from-violet-500 to-emerald-500 rounded-full transition-all"
+                                  className="h-full bg-gradient-to-r from-violet-500 to-accent rounded-full transition-all"
                                   style={{ width: `${Math.min(100, formScore)}%` }}
                                 />
                               </div>
                             </div>
                             {matchesWithScore.length > 0 && (
-                              <div className="text-white/70 text-sm">
+                              <div className="text-foreground/70 text-sm">
                                 Poslední zápasy: {wins}V {draws}R {losses}P
                               </div>
                             )}
@@ -1119,7 +1277,7 @@ function HodnoceniHracuContent() {
 
                         {/* Jednotliví hráči */}
                         <div>
-                          <h3 className="text-white/80 font-medium mb-2 text-sm">Forma hráčů</h3>
+                          <h3 className="text-foreground/80 font-medium mb-2 text-sm">Forma hráčů</h3>
                           <div className="space-y-3 max-h-64 overflow-y-auto">
                             {attendanceStats
                               .filter((s) => s.trainingCount > 0 || s.matchCount > 0)
@@ -1135,12 +1293,12 @@ function HodnoceniHracuContent() {
                                 return (
                                   <div key={s.playerId} className="space-y-1">
                                     <div className="flex justify-between items-center text-sm">
-                                      <span className="text-white font-medium">{s.playerName}</span>
+                                      <span className="text-foreground font-medium">{s.playerName}</span>
                                       <span className="text-violet-400 tabular-nums">
                                         {formPct}% (účast {s.attendancePct}%, zápas {s.avgMatchScore}/10)
                                       </span>
                                     </div>
-                                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                                    <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
                                       <div
                                         className="h-full bg-violet-500/80 rounded-full transition-all"
                                         style={{ width: `${Math.min(100, formPct)}%` }}
@@ -1169,10 +1327,10 @@ function HodnoceniHracuContent() {
                   onClick={() => setPlayersListExpanded((prev) => !prev)}
                   className="flex items-center gap-2 text-left group"
                 >
-                  <span className="inline-block w-5 text-white/60">{playersListExpanded ? '▼' : '▶'}</span>
-                  <h2 className="text-lg font-semibold text-white group-hover:text-white/90">
+                  <span className="inline-block w-5 text-foreground/60">{playersListExpanded ? '▼' : '▶'}</span>
+                  <h2 className="text-lg font-semibold text-foreground group-hover:text-foreground/90">
                     Hráči týmu
-                    {!playersListExpanded && <span className="font-normal text-white/60 ml-1">({players.length})</span>}
+                    {!playersListExpanded && <span className="font-normal text-foreground/60 ml-1">({players.length})</span>}
                   </h2>
                 </button>
                 <button
@@ -1190,19 +1348,23 @@ function HodnoceniHracuContent() {
               {playersListExpanded && (
               <>
               <div className="mb-4">
-                <label className="block text-white/80 text-sm mb-1">Trenér (30&nbsp;% větší vliv na žebříček)</label>
-                <select
-                  value={coachPlayerId ?? ''}
-                  onChange={(e) => setCoach(e.target.value || null)}
+                <label className="block text-foreground/80 text-sm mb-1">Trenér (30&nbsp;% větší vliv na žebříček)</label>
+                <Select
+                  value={coachPlayerId ?? '__none__'}
+                  onValueChange={(value) => setCoach(value === '__none__' ? null : value)}
                   disabled={savingCoach}
-                  className="px-4 py-2 rounded-lg glass-input text-white w-full max-w-xs disabled:opacity-50"
                 >
-                  <option value="">— Bez trenéra</option>
-                  {players.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                {savingCoach && <span className="text-white/50 text-sm ml-2">Ukládám...</span>}
+                  <SelectTrigger className="w-full max-w-xs rounded-lg glass-input text-foreground focus:ring-2 focus:ring-blue-400 disabled:opacity-50">
+                    <SelectValue placeholder="— Bez trenéra" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Bez trenéra</SelectItem>
+                    {players.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {savingCoach && <span className="text-foreground/50 text-sm ml-2">Ukládám...</span>}
               </div>
 
               <form onSubmit={addPlayer} className="flex gap-2 mb-4">
@@ -1212,7 +1374,7 @@ function HodnoceniHracuContent() {
                   value={newPlayerName}
                   onChange={(e) => setNewPlayerName(e.target.value)}
                   placeholder="Jméno hráče"
-                  className="flex-1 px-4 py-2 rounded-lg glass-input text-white placeholder-white/50"
+                  className="flex-1 px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
                   required
                 />
                 <button type="submit" disabled={addingPlayer} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white font-medium disabled:opacity-50">
@@ -1221,8 +1383,8 @@ function HodnoceniHracuContent() {
               </form>
               <ul className="space-y-2">
                 {players.map((p) => (
-                  <li key={p.id} className="flex justify-between items-center py-2 border-b border-white/10 gap-2">
-                    <span className="text-white flex items-center gap-2">
+                  <li key={p.id} className="flex justify-between items-center py-2 border-b border-border gap-2">
+                    <span className="text-foreground flex items-center gap-2">
                       {p.name}
                       {coachPlayerId === p.id && (
                         <span className="text-violet-400 text-xs font-medium">(trenér)</span>
@@ -1244,7 +1406,7 @@ function HodnoceniHracuContent() {
 
             <div className="glass-card rounded-2xl p-4 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <h2 className="text-base sm:text-lg font-semibold text-white">Zápasy</h2>
+                <h2 className="text-base sm:text-lg font-semibold text-foreground">Zápasy</h2>
                 {matchSeasons.length > 1 && (
                   <div className="flex gap-1">
                     {matchSeasons.map((s) => (
@@ -1254,8 +1416,8 @@ function HodnoceniHracuContent() {
                         onClick={() => setMatchesSeason(s)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                           selectedSeason === s
-                            ? 'bg-violet-500/50 text-white border border-violet-400/50'
-                            : 'bg-white/5 text-white/70 hover:bg-white/10 border border-white/10'
+                            ? 'bg-violet-500/50 text-foreground border border-violet-400/50'
+                            : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
                         }`}
                       >
                         {s}
@@ -1269,22 +1431,23 @@ function HodnoceniHracuContent() {
                   type="date"
                   value={newMatchDate}
                   onChange={(e) => setNewMatchDate(e.target.value)}
-                  className="px-4 py-2 rounded-lg glass-input text-white min-w-0 sm:min-w-[140px]"
+                  className="px-4 py-2 rounded-lg glass-input text-foreground min-w-0 sm:min-w-[140px]"
                   required
                 />
                 <input
                   type="time"
                   value={newMatchStartTime}
                   onChange={(e) => setNewMatchStartTime(e.target.value)}
-                  className="px-4 py-2 rounded-lg glass-input text-white min-w-0 sm:min-w-[100px]"
+                  className="px-4 py-2 rounded-lg glass-input text-foreground min-w-0 sm:min-w-[100px]"
                   title="Čas začátku"
+                  required
                 />
                 <input
                   type="text"
                   value={newMatchOpponent}
                   onChange={(e) => setNewMatchOpponent(e.target.value)}
                   placeholder="Soupeř (volitelně)"
-                  className="flex-1 min-w-0 px-4 py-2 rounded-lg glass-input text-white placeholder-white/50"
+                  className="flex-1 min-w-0 px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
                 />
                 <button type="submit" disabled={addingMatch} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white font-medium disabled:opacity-50">
                   {addingMatch ? '...' : 'Přidat zápas'}
@@ -1297,22 +1460,21 @@ function HodnoceniHracuContent() {
                   const scorersData = matchScorersData[m.id];
                   const canExpand = goalsFor > 0;
                   return (
-                    <li key={m.id} className="border-b border-white/10">
+                    <li key={m.id} className="border-b border-border">
                       <div
-                        className={`flex justify-between items-center py-2 gap-2 ${canExpand ? 'cursor-pointer hover:bg-white/5 rounded-lg -mx-1 px-1' : ''}`}
+                        className={`flex justify-between items-center py-2 gap-2 ${canExpand ? 'cursor-pointer hover:bg-surface rounded-lg -mx-1 px-1' : ''}`}
                         onClick={() => canExpand && toggleMatchExpand(m)}
                         onKeyDown={(e) => canExpand && (e.key === 'Enter' || e.key === ' ') && e.preventDefault()}
                         role={canExpand ? 'button' : undefined}
                         tabIndex={canExpand ? 0 : undefined}
                       >
-                        <span className="text-white">
+                        <span className="text-foreground">
                           {canExpand && (
-                            <span className="inline-block w-5 text-white/60">
+                            <span className="inline-block w-5 text-foreground/60">
                               {isExpanded ? '▼' : '▶'}
                             </span>
                           )}
-                          {new Date(m.date).toLocaleDateString('cs-CZ')}
-                          {m.startTime ? ` ${m.startTime}` : ''}
+                          {formatEventDateTime(m.date, m.startTime)}
                           {m.opponent && ` vs ${m.opponent}`}
                           {(m.goalsFor != null && m.goalsAgainst != null) && (
                             <span className="text-violet-400 font-semibold ml-2">
@@ -1344,31 +1506,39 @@ function HodnoceniHracuContent() {
                       </div>
                       {isExpanded && canExpand && scorersData && (
                         <div className="pb-4 pl-6 pr-2 space-y-3" onClick={(e) => e.stopPropagation()}>
-                          <p className="text-white/70 text-sm font-medium">Střelci branek a asistence</p>
+                          <p className="text-foreground/70 text-sm font-medium">Střelci branek a asistence</p>
                           {scorersData.scorers.map((_, i) => (
                             <div key={i} className="flex flex-wrap items-center gap-2">
-                              <span className="text-white/60 text-sm w-20">Branka {i + 1}:</span>
-                              <select
-                                value={scorersData.scorers[i]?.playerId ?? ''}
-                                onChange={(e) => setMatchScorer(m.id, i + 1, e.target.value)}
-                                className="px-3 py-1.5 rounded-lg glass-input text-white text-sm min-w-[140px]"
+                              <span className="text-foreground/60 text-sm w-20">Branka {i + 1}:</span>
+                              <Select
+                                value={scorersData.scorers[i]?.playerId ?? '__none__'}
+                                onValueChange={(value) => setMatchScorer(m.id, i + 1, value === '__none__' ? '' : value)}
                               >
-                                <option value="">— Střelec —</option>
-                                {players.map((p) => (
-                                  <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                              </select>
-                              <span className="text-white/50">+</span>
-                              <select
-                                value={scorersData.assists[i]?.playerId ?? ''}
-                                onChange={(e) => setMatchAssist(m.id, i + 1, e.target.value)}
-                                className="px-3 py-1.5 rounded-lg glass-input text-white text-sm min-w-[140px]"
+                                <SelectTrigger className="h-8 min-w-[140px] rounded-lg glass-input text-foreground text-sm focus:ring-2 focus:ring-blue-400">
+                                  <SelectValue placeholder="— Střelec —" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">— Střelec —</SelectItem>
+                                  {players.map((p) => (
+                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <span className="text-foreground/50">+</span>
+                              <Select
+                                value={scorersData.assists[i]?.playerId ?? '__none__'}
+                                onValueChange={(value) => setMatchAssist(m.id, i + 1, value === '__none__' ? '' : value)}
                               >
-                                <option value="">— Asistence —</option>
-                                {players.map((p) => (
-                                  <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                              </select>
+                                <SelectTrigger className="h-8 min-w-[140px] rounded-lg glass-input text-foreground text-sm focus:ring-2 focus:ring-blue-400">
+                                  <SelectValue placeholder="— Asistence —" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">— Asistence —</SelectItem>
+                                  {players.map((p) => (
+                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                           ))}
                           <button
@@ -1391,80 +1561,87 @@ function HodnoceniHracuContent() {
 
         {tab === 'vote' && (
           <div className="glass-card rounded-2xl p-4 sm:p-6 max-w-2xl">
-            <h2 className="text-base sm:text-lg font-semibold text-white mb-4">Podle vyhodnocení ze zápasu vyhodnoť hráče utkání</h2>
-              <p className="text-white/60 text-sm mb-4">
+            <h2 className="text-base sm:text-lg font-semibold text-foreground mb-4">Podle vyhodnocení ze zápasu vyhodnoť hráče utkání</h2>
+              <p className="text-foreground/60 text-sm mb-4">
               Vyberte sebe (hlasujícího), zápas a ohodnoťte spoluhráče škálou 0–10 podle výkonu v utkání (0 = nebyl nasazen, 10 = nejlepší). Nemůžete hodnotit sám sebe. Každý hráč může hlasovat jen jednou – po odeslání nelze měnit.
             </p>
             {voteSubmittedSuccess && (
-              <div className="p-4 rounded-xl bg-emerald-500/20 border border-emerald-400/50 mb-4 flex items-center gap-2">
-                <span className="text-emerald-400 text-xl">✓</span>
-                <p className="text-emerald-200 font-medium">Hodnocení bylo odesláno.</p>
+              <div className="p-4 rounded-xl bg-accent/20 border border-accent/50 mb-4 flex items-center gap-2">
+                <span className="text-accent-dark text-xl">✓</span>
+                <p className="text-accent-light font-medium">Hodnocení bylo odesláno.</p>
               </div>
             )}
             <form onSubmit={submitVote} className="space-y-4">
               <div>
-                <label className="block text-white font-medium mb-2">Kdo hlasuje?</label>
-                <select
-                  value={voterId}
-                  onChange={(e) => {
-                    setVoterId(e.target.value);
+                <label className="block text-foreground font-medium mb-2">Kdo hlasuje?</label>
+                <Select
+                  value={voterId || '__none__'}
+                  onValueChange={(value) => {
+                    setVoterId(value === '__none__' ? '' : value);
                     setShowVoteValidation(false);
                   }}
-                  className={`w-full px-4 py-3 rounded-xl glass-input text-white ${showVoteValidation && !voterId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}
-                  required
                 >
-                  <option value="">Vyberte sebe</option>
-                  {players.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                      {coachPlayerId === p.id ? ' (trenér)' : ''}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className={`w-full rounded-xl glass-input text-foreground focus:ring-2 focus:ring-blue-400 ${showVoteValidation && !voterId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}>
+                    <SelectValue placeholder="Vyberte sebe" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Vyberte sebe</SelectItem>
+                    {players.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                        {coachPlayerId === p.id ? ' (trenér)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
-                <label className="block text-white font-medium mb-2">Za který zápas?</label>
-                <select
-                  value={matchId}
-                  onChange={(e) => {
-                    const val = e.target.value;
+                <label className="block text-foreground font-medium mb-2">Za který zápas?</label>
+                <Select
+                  value={matchId || '__none__'}
+                  onValueChange={(val) => {
                     if (val === '__add_match__') {
                       setMatchId('');
                       setTab('manage');
+                    } else if (val === '__none__') {
+                      setMatchId('');
+                      setShowVoteValidation(false);
                     } else {
                       setMatchId(val);
                       setShowVoteValidation(false);
                     }
                   }}
-                  className={`w-full px-4 py-3 rounded-xl glass-input text-white ${showVoteValidation && !matchId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}
-                  required
                 >
-                  <option value="">Vyberte zápas</option>
-                  {matches.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {new Date(m.date).toLocaleDateString('cs-CZ')}
-                      {m.startTime ? ` ${m.startTime}` : ''}
-                      {m.opponent ? ` vs ${m.opponent}` : ''}
-                      {(m.goalsFor != null && m.goalsAgainst != null)
-                        ? ` ${m.goalsFor}:${m.goalsAgainst}`
-                        : m.result
-                          ? ` ${m.result}`
-                          : ''}
-                    </option>
-                  ))}
-                  <option value="__add_match__">➕ Přidat zápas</option>
-                </select>
+                  <SelectTrigger className={`w-full rounded-xl glass-input text-foreground focus:ring-2 focus:ring-blue-400 ${showVoteValidation && !matchId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}>
+                    <SelectValue placeholder="Vyberte zápas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Vyberte zápas</SelectItem>
+                    {matches.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {formatEventDateTime(m.date, m.startTime)}
+                        {m.opponent ? ` vs ${m.opponent}` : ''}
+                        {(m.goalsFor != null && m.goalsAgainst != null)
+                          ? ` ${m.goalsFor}:${m.goalsAgainst}`
+                          : m.result
+                            ? ` ${m.result}`
+                            : ''}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="__add_match__">➕ Přidat zápas</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               {hasVoted && (
                 <div className="p-4 rounded-xl bg-amber-500/20 border border-amber-500/40">
                   <p className="text-amber-200 font-medium">Už jste pro tento zápas hlasoval.</p>
-                  <p className="text-white/70 text-sm mt-1">Hodnocení nelze měnit.</p>
+                  <p className="text-foreground/70 text-sm mt-1">Hodnocení nelze měnit.</p>
                 </div>
               )}
               {otherPlayers.length > 0 && !hasVoted && (
                 <div>
-                  <label className="block text-white font-medium mb-3">
-                    Hodnocení táhlem (0 = nebyl nasazen, 10 = nejlepší)
+                  <label className="block text-foreground font-medium mb-3">
+                    Hodnocení táhlem – hodnotte fair a pozitivně (0 = nebyl nasazen, 10 = nejlepší)
                   </label>
                   <div className="space-y-4">
                     {otherPlayers.map((p) => {
@@ -1472,14 +1649,14 @@ function HodnoceniHracuContent() {
                       return (
                         <div key={p.id} className="space-y-1">
                           <div className="flex justify-between items-center">
-                            <span className="text-white font-medium">
+                            <span className="text-foreground font-medium">
                               {p.name}
                               {coachPlayerId === p.id && (
                                 <span className="text-violet-400 text-xs font-medium ml-1">(trenér)</span>
                               )}
                             </span>
                             <span className="flex items-center gap-2">
-                              <span className="text-2xl" aria-hidden>{RATING_EMOJI[val]}</span>
+                              <span className="text-2xl" aria-hidden title={RATING_LABELS[val] ?? ''}>{RATING_EMOJI[val]}</span>
                               <span className="text-violet-400 font-semibold tabular-nums">{val === 0 ? '0 (nehrál)' : `${val}/10`}</span>
                             </span>
                           </div>
@@ -1497,9 +1674,12 @@ function HodnoceniHracuContent() {
                                   [p.id]: Number(e.target.value),
                                 }))
                               }
-                              className="flex-1 h-3 rounded-full accent-violet-500 bg-white/10"
+                              className="flex-1 h-3 rounded-full bg-surface-hover"
+                              style={{
+                                background: `linear-gradient(90deg, #22c55e 0%, #22c55e ${val * 10}%, rgba(255,255,255,0.14) ${val * 10}%, rgba(255,255,255,0.14) 100%)`,
+                              }}
                             />
-                            <span className="text-lg" aria-hidden>🚀</span>
+                            <span className="text-lg" aria-hidden title="10 = nejlepší">🏆</span>
                           </div>
                         </div>
                       );
@@ -1523,57 +1703,86 @@ function HodnoceniHracuContent() {
 
         {tab === 'leaderboard' && (
           <div className="glass-card rounded-2xl p-4 sm:p-6 max-w-3xl">
-            <h2 className="text-base sm:text-lg font-semibold text-white mb-4">Žebříček hráčů</h2>
-            <p className="text-white/60 text-sm mb-4">
-              Průměrné hodnocení od spoluhráčů po zápasech. Čím více hlasů, tím reprezentativnější.
+            <h2 className="text-base sm:text-lg font-semibold text-foreground mb-4">Žebříček hráčů</h2>
+            <p className="text-foreground/60 text-sm mb-4">
+              Průměrné hodnocení od spoluhráčů po zápasech. Čím více hlasů, tím reprezentativnější. Odznáčky: Střelec ⚽, Dříč 💪 (docházka), Král asistencí 👑.
             </p>
             {(matchSeasons.length > 0 || matches.length > 0) && (
               <div className="mb-4">
-                <label className="block text-white/80 text-sm mb-1">Filtrovat podle</label>
-                <select
-                  value={leaderboardFilter}
-                  onChange={(e) => setLeaderboardFilter(e.target.value)}
-                  className="px-4 py-2 rounded-lg glass-input text-white w-full max-w-xs"
+                <label className="block text-foreground/80 text-sm mb-1">Filtrovat podle</label>
+                <Select
+                  value={leaderboardFilter || '__all__'}
+                  onValueChange={(value) => setLeaderboardFilter(value === '__all__' ? '' : value)}
                 >
-                  <option value="">Všechny zápasy (celkový průměr)</option>
-                  <optgroup label="Průměr za sezónu">
-                    {matchSeasons.map((s) => (
-                      <option key={s} value={`season:${s}`}>
-                        Sezóna {s}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Za konkrétní zápas">
-                    {matches
-                      .sort((a, b) => b.date.localeCompare(a.date))
-                      .map((m) => (
-                        <option key={m.id} value={`match:${m.id}`}>
-                          {new Date(m.date).toLocaleDateString('cs-CZ')}
-                          {m.opponent ? ` vs ${m.opponent}` : ''}
-                        </option>
+                  <SelectTrigger className="w-full max-w-xs rounded-lg glass-input text-foreground focus:ring-2 focus:ring-blue-400">
+                    <SelectValue placeholder="Všechny zápasy (celkový průměr)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Všechny zápasy (celkový průměr)</SelectItem>
+                    <SelectGroup>
+                      <SelectLabel>Průměr za sezónu</SelectLabel>
+                      {matchSeasons.map((s) => (
+                        <SelectItem key={s} value={`season:${s}`}>
+                          Sezóna {s}
+                        </SelectItem>
                       ))}
-                  </optgroup>
-                </select>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Za konkrétní zápas</SelectLabel>
+                      {matches
+                        .sort((a, b) => b.date.localeCompare(a.date))
+                        .map((m) => (
+                          <SelectItem key={m.id} value={`match:${m.id}`}>
+                            {formatEventDateTime(m.date, m.startTime)}
+                            {m.opponent ? ` vs ${m.opponent}` : ''}
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
             )}
             {leaderboard.length === 0 ? (
-              <p className="text-white/50 italic">Zatím žádná hodnocení.</p>
+              <p className="text-foreground/50 italic">Zatím žádná hodnocení.</p>
             ) : (
               <div className="space-y-2">
-                {leaderboard.map((entry, i) => (
-                  <div
-                    key={entry.playerId}
-                    className="flex justify-between items-center py-3 px-4 rounded-xl bg-white/5 border border-white/10"
-                  >
-                    <span className="text-white font-medium">
-                      {i + 1}. {entry.playerName}
-                    </span>
-                    <div className="text-right">
-                      <span className="text-violet-400 font-semibold">{entry.avgScore} / 10</span>
-                      <span className="text-white/50 text-sm ml-2">({entry.voteCount} hlasů)</span>
-                    </div>
-                  </div>
-                ))}
+                {leaderboard.map((entry, i) => {
+                  const badges = getPlayerBadges(entry.playerId, canadianStats, attendanceStats);
+                  return (
+                    <button
+                      key={entry.playerId}
+                      type="button"
+                      onClick={() => setPlayerCardModal(entry)}
+                      className="w-full text-left flex justify-between items-center py-3 px-4 rounded-xl bg-surface border border-border hover:bg-surface-hover transition-colors cursor-pointer"
+                    >
+                      <span className="text-foreground font-medium flex items-center gap-2 flex-wrap">
+                        {i + 1}. {entry.playerName}
+                        {badges.length > 0 && (
+                          <span className="flex items-center gap-1.5 flex-wrap">
+                            {badges.map((bid) => {
+                              const b = BADGES.find((x) => x.id === bid)!;
+                              return (
+                                <span
+                                  key={b.id}
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-accent/20 border border-accent/40 text-sm"
+                                  title={b.title}
+                                >
+                                  <span aria-hidden>{b.icon}</span>
+                                  <span className="text-foreground/90">{b.label}</span>
+                                </span>
+                              );
+                            })}
+                          </span>
+                        )}
+                      </span>
+                      <div className="text-right">
+                        <span className="text-violet-400 font-semibold">{entry.avgScore} / 10</span>
+                        <span className="text-foreground/50 text-sm ml-2">({entry.voteCount} hlasů)</span>
+                        <span className="text-foreground/40 ml-1">›</span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1581,46 +1790,50 @@ function HodnoceniHracuContent() {
 
         {tab === 'canadian' && (
           <div className="glass-card rounded-2xl p-4 sm:p-6 overflow-hidden">
-            <h2 className="text-base sm:text-lg font-semibold text-white mb-4">Kanadské bodování</h2>
-            <p className="text-white/60 text-sm mb-4">
+            <h2 className="text-base sm:text-lg font-semibold text-foreground mb-4">Kanadské bodování</h2>
+            <p className="text-foreground/60 text-sm mb-4">
               Góly a asistence našeho týmu. 1 gól = 1b, 1 asistence = 1b. Seřazeno podle celkového součtu.
             </p>
             {(matchSeasons.length > 0 || matches.length > 0) && (
               <div className="mb-4">
-                <label className="block text-white/80 text-sm mb-1">Sezóna</label>
-                <select
-                  value={canadianFilter}
-                  onChange={(e) => setCanadianFilter(e.target.value)}
-                  className="px-4 py-2 rounded-lg glass-input text-white w-full max-w-xs"
+                <label className="block text-foreground/80 text-sm mb-1">Sezóna</label>
+                <Select
+                  value={canadianFilter || '__all__'}
+                  onValueChange={(value) => setCanadianFilter(value === '__all__' ? '' : value)}
                 >
-                  <option value="">Všechny zápasy</option>
-                  {matchSeasons.map((s) => (
-                    <option key={s} value={`season:${s}`}>
-                      Sezóna {s}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full max-w-xs rounded-lg glass-input text-foreground focus:ring-2 focus:ring-blue-400">
+                    <SelectValue placeholder="Všechny zápasy" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Všechny zápasy</SelectItem>
+                    {matchSeasons.map((s) => (
+                      <SelectItem key={s} value={`season:${s}`}>
+                        Sezóna {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
             {canadianStats.length === 0 ? (
-              <p className="text-white/50 italic">Zatím žádné góly ani asistence. Zadejte střelce a asistenty u zápasů.</p>
+              <p className="text-foreground/50 italic">Zatím žádné góly ani asistence. Zadejte střelce a asistenty u zápasů.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="border-b border-white/20">
-                      <th className="py-2 pr-4 text-white/70 font-medium">#</th>
-                      <th className="py-2 pr-4 text-white/70 font-medium">Hráč</th>
-                      <th className="py-2 pr-4 text-white/70 font-medium text-center">G</th>
-                      <th className="py-2 pr-4 text-white/70 font-medium text-center">A</th>
-                      <th className="py-2 text-white/70 font-medium text-center">Celkem (1b)</th>
+                    <tr className="border-b border-border">
+                      <th className="py-2 pr-4 text-foreground/70 font-medium">#</th>
+                      <th className="py-2 pr-4 text-foreground/70 font-medium">Hráč</th>
+                      <th className="py-2 pr-4 text-foreground/70 font-medium text-center">G</th>
+                      <th className="py-2 pr-4 text-foreground/70 font-medium text-center">A</th>
+                      <th className="py-2 text-foreground/70 font-medium text-center">Celkem (1b)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {canadianStats.map((entry, i) => (
-                      <tr key={entry.playerId} className="border-b border-white/10">
-                        <td className="py-2 pr-4 text-white/60">{i + 1}</td>
-                        <td className="py-2 pr-4 text-white font-medium">{entry.playerName}</td>
+                      <tr key={entry.playerId} className="border-b border-border">
+                        <td className="py-2 pr-4 text-foreground/60">{i + 1}</td>
+                        <td className="py-2 pr-4 text-foreground font-medium">{entry.playerName}</td>
                         <td className="py-2 pr-4 text-center text-violet-400">{entry.goals}</td>
                         <td className="py-2 pr-4 text-center text-amber-400">{entry.assists}</td>
                         <td className="py-2 text-center text-violet-300 font-semibold">{entry.total}</td>
@@ -1641,9 +1854,9 @@ function HodnoceniHracuContent() {
               </div>
             )}
             <div className="glass-card rounded-2xl p-4 sm:p-6">
-              <h2 className="text-base sm:text-lg font-semibold text-white mb-3">Kalendář událostí</h2>
-              <p className="text-white/60 text-sm mb-4">
-                Přidejte tréninky a zápasy. „Odkaz“ = hráči potvrdí účast před událostí. „Docházka“ = po uskutečnění události finálně zaznamenáte, kdo skutečně přišel (jednorázové odeslání, nelze měnit).
+              <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3">Kalendář událostí</h2>
+              <p className="text-foreground/60 text-sm mb-4">
+                Přidejte tréninky a zápasy. „Účast" = odkaz pro hráče, kteří se do půlnoci před událostí sami ohlásí, zda dorazí. „Docházka" = po události finálně zaznamenáte, kdo skutečně přišel (jednorázové odeslání, nelze měnit).
               </p>
               <form onSubmit={addEvent} className="flex flex-col gap-3 mb-6">
                 <div className="flex flex-wrap gap-2">
@@ -1651,33 +1864,36 @@ function HodnoceniHracuContent() {
                     type="date"
                     value={newEventDate}
                     onChange={(e) => setNewEventDate(e.target.value)}
-                    className="px-4 py-2 rounded-lg glass-input text-white"
+                    className="px-4 py-2 rounded-lg glass-input text-foreground"
                     required
                   />
                   <input
                     type="time"
                     value={newEventStartTime}
                     onChange={(e) => setNewEventStartTime(e.target.value)}
-                    className="px-4 py-2 rounded-lg glass-input text-white"
+                    className="px-4 py-2 rounded-lg glass-input text-foreground"
                     title="Čas začátku"
+                    required
                   />
-                  <select
-                    value={newEventType}
-                    onChange={(e) => setNewEventType(e.target.value as EventType)}
-                    className="px-4 py-2 rounded-lg glass-input text-white"
-                  >
-                    {(['training', 'friendly_match', 'competitive_match'] as EventType[]).map((t) => (
-                      <option key={t} value={t}>
-                        {EVENT_TYPE_LABELS[t]}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={newEventType} onValueChange={(value) => setNewEventType(value as EventType)}>
+                    <SelectTrigger className="w-[220px] rounded-lg glass-input text-foreground focus:ring-2 focus:ring-blue-400">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(['training', 'friendly_match', 'competitive_match'] as EventType[]).map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {EVENT_TYPE_LABELS[t]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <input
                     type="text"
                     value={newEventLocation}
                     onChange={(e) => setNewEventLocation(e.target.value)}
-                    placeholder="Místo (volitelně)"
-                    className="flex-1 min-w-[140px] px-4 py-2 rounded-lg glass-input text-white placeholder-white/50"
+                    placeholder="Místo *"
+                    className="flex-1 min-w-[140px] px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
+                    required
                   />
                   {newEventType !== 'training' && (
                     <input
@@ -1685,7 +1901,7 @@ function HodnoceniHracuContent() {
                       value={newEventOpponent}
                       onChange={(e) => setNewEventOpponent(e.target.value)}
                       placeholder="Soupeř (volitelně)"
-                      className="flex-1 min-w-[120px] px-4 py-2 rounded-lg glass-input text-white placeholder-white/50"
+                      className="flex-1 min-w-[120px] px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
                     />
                   )}
                   <input
@@ -1693,7 +1909,7 @@ function HodnoceniHracuContent() {
                     value={newEventNote}
                     onChange={(e) => setNewEventNote(e.target.value)}
                     placeholder="Poznámka (volitelně)"
-                    className="w-full px-4 py-2 rounded-lg glass-input text-white placeholder-white/50"
+                    className="w-full px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
                   />
                 </div>
                 <button type="submit" disabled={addingEvent} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white font-medium disabled:opacity-50 w-fit">
@@ -1701,14 +1917,14 @@ function HodnoceniHracuContent() {
                 </button>
               </form>
               {createdEventLink && (
-                <div className="mb-6 p-4 rounded-xl bg-emerald-500/20 border border-emerald-400/30">
-                  <p className="text-white font-medium mb-2">Odkaz pro potvrzení účasti (hráči před událostí řeknou, zda přijdou):</p>
+                <div className="mb-6 p-4 rounded-xl bg-accent/20 border border-accent/40">
+                  <p className="text-foreground font-medium mb-2">Odkaz pro potvrzení účasti (hráči před událostí řeknou, zda přijdou):</p>
                   <div className="flex flex-wrap items-center gap-2">
                     <input
                       type="text"
                       readOnly
                       value={createdEventLink}
-                      className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-white/10 text-white text-sm font-mono"
+                      className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-surface-hover text-foreground text-sm font-mono"
                     />
                     <button
                       type="button"
@@ -1728,7 +1944,7 @@ function HodnoceniHracuContent() {
                       href={createdEventLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm font-medium"
+                      className="px-4 py-2 bg-surface-hover hover:bg-white/20 rounded-lg text-foreground text-sm font-medium"
                     >
                       Otevřít v novém okně
                     </a>
@@ -1765,27 +1981,34 @@ function HodnoceniHracuContent() {
                 const EventList = ({ evs }: { evs: Event[] }) => (
                   <ul className="space-y-2">
                     {evs.map((ev) => (
-                      <li key={ev.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-white/5 border border-white/10 gap-2">
+                      <li key={ev.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-surface border border-border gap-2">
                         <button
                           type="button"
-                          onClick={() => openAttendanceModal(ev)}
+                          onClick={() => openUcastModal(ev)}
                           className="text-left flex-1"
                         >
-                          <span className="text-white">
-                            {new Date(ev.date).toLocaleDateString('cs-CZ')}
-                            {ev.startTime ? ` ${ev.startTime}` : ''} – {EVENT_TYPE_LABELS[ev.eventType]}
+                          <span className="text-foreground">
+                            {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType]}
                             {ev.location && ` • ${ev.location}`}
                             {ev.opponent && ev.opponent !== ev.location && ` vs ${ev.opponent}`}
                             {ev.note && (
-                              <span className="block text-white/70 text-sm mt-0.5">{ev.note}</span>
+                              <span className="block text-foreground/70 text-sm mt-0.5">{ev.note}</span>
                             )}
                           </span>
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
-                            onClick={() => openAttendanceModal(ev)}
-                            className="text-emerald-400 hover:text-emerald-300 text-sm px-2 py-1 font-medium"
+                            onClick={() => openUcastModal(ev)}
+                            className="text-violet-400 hover:text-violet-300 text-sm px-2 py-1"
+                            title="Odkaz pro hráče + přehled, kdo se hlásí (do půlnoci před událostí)"
+                          >
+                            Účast
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openDochazkaModal(ev)}
+                            className="text-accent hover:text-accent-light text-sm px-2 py-1 font-medium"
                             title="Po události: finálně zaznamenat, kdo přišel"
                           >
                             Docházka
@@ -1794,8 +2017,8 @@ function HodnoceniHracuContent() {
                             <button
                               type="button"
                               onClick={() => copyAttendanceLink(ev)}
-                              className="text-violet-400 hover:text-violet-300 text-sm px-2 py-1"
-                              title="Kopírovat odkaz pro potvrzení účasti (hráči před událostí)"
+                              className="text-foreground/70 hover:text-foreground text-sm px-2 py-1"
+                              title="Kopírovat odkaz pro potvrzení účasti"
                             >
                               Odkaz
                             </button>
@@ -1810,7 +2033,7 @@ function HodnoceniHracuContent() {
                 );
 
                 if (upcoming.length === 0 && past.length === 0) {
-                  return <p className="text-white/50 italic">Zatím žádné události.</p>;
+                  return <p className="text-foreground/50 italic">Zatím žádné události.</p>;
                 }
 
                 const upcomingMonths = toByMonth(upcoming);
@@ -1820,11 +2043,11 @@ function HodnoceniHracuContent() {
                   <div className="space-y-6">
                     {upcoming.length > 0 && (
                       <div>
-                        <h3 className="text-white/90 font-semibold mb-3">Následující události</h3>
+                        <h3 className="text-foreground/90 font-semibold mb-3">Následující události</h3>
                         <div className="space-y-4">
                           {upcomingMonths.map(([month, evs]) => (
                             <div key={month}>
-                              <h4 className="text-white/70 font-medium mb-2 text-sm">{month}</h4>
+                              <h4 className="text-foreground/70 font-medium mb-2 text-sm">{month}</h4>
                               <EventList evs={[...evs].sort((a, b) => a.date.localeCompare(b.date))} />
                             </div>
                           ))}
@@ -1837,7 +2060,7 @@ function HodnoceniHracuContent() {
                         <button
                           type="button"
                           onClick={() => setShowPastEvents(!showPastEvents)}
-                          className="flex items-center gap-2 text-white/60 hover:text-white/80 font-medium mb-2 transition-colors"
+                          className="flex items-center gap-2 text-foreground/60 hover:text-foreground/80 font-medium mb-2 transition-colors"
                         >
                           <svg className={`w-4 h-4 transition-transform ${showPastEvents ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -1848,7 +2071,7 @@ function HodnoceniHracuContent() {
                           <div className="space-y-4 opacity-90">
                             {pastMonths.map(([month, evs]) => (
                               <div key={month}>
-                                <h4 className="text-white/50 font-medium mb-2 text-sm">{month}</h4>
+                                <h4 className="text-foreground/50 font-medium mb-2 text-sm">{month}</h4>
                                 <EventList evs={[...evs].sort((a, b) => b.date.localeCompare(a.date))} />
                               </div>
                             ))}
@@ -1863,8 +2086,8 @@ function HodnoceniHracuContent() {
 
             {attendanceStats.some((s) => s.trainingCount > 0) && (
               <div className="glass-card rounded-2xl p-4 sm:p-6">
-                <h2 className="text-base sm:text-lg font-semibold text-white mb-2">Účast na tréninzích vs výkonnost na zápasech</h2>
-                <p className="text-white/60 text-sm mb-4">
+                <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2">Účast na tréninzích vs výkonnost na zápasech</h2>
+                <p className="text-foreground/60 text-sm mb-4">
                   Porovnání % účasti na tréninzích s průměrným hodnocením v zápasech.
                 </p>
                 <div className="space-y-3">
@@ -1874,8 +2097,8 @@ function HodnoceniHracuContent() {
                     .map((s) => (
                       <div key={s.playerId} className="space-y-1">
                         <div className="flex justify-between text-sm mb-1">
-                          <span className="text-white font-medium">{s.playerName}</span>
-                          <span className="text-white/60">
+                          <span className="text-foreground font-medium">{s.playerName}</span>
+                          <span className="text-foreground/60">
                             účast {s.attendancePct}%
                             {s.trainingCount > 0 ? ` (${Math.round((s.attendancePct / 100) * s.trainingCount)}/${s.trainingCount})` : ''}
                             {' · '}zápas {s.avgMatchScore}/10
@@ -1883,14 +2106,14 @@ function HodnoceniHracuContent() {
                         </div>
                         <div className="space-y-1">
                           <div className="flex gap-2 items-center">
-                            <span className="text-emerald-400/80 text-xs w-12">Účast</span>
-                            <div className="flex-1 h-4 rounded-full bg-white/10 overflow-hidden">
-                              <div className="h-full bg-emerald-500/70 rounded-full" style={{ width: `${s.attendancePct}%` }} />
+                            <span className="text-accent/90 text-xs w-12">Účast</span>
+                            <div className="flex-1 h-4 rounded-full bg-surface-hover overflow-hidden">
+                              <div className="h-full bg-accent/70 rounded-full" style={{ width: `${s.attendancePct}%` }} />
                             </div>
                           </div>
                           <div className="flex gap-2 items-center">
                             <span className="text-violet-400/80 text-xs w-12">Zápas</span>
-                            <div className="flex-1 h-4 rounded-full bg-white/10 overflow-hidden">
+                            <div className="flex-1 h-4 rounded-full bg-surface-hover overflow-hidden">
                               <div className="h-full bg-violet-500/70 rounded-full" style={{ width: `${(s.avgMatchScore / 10) * 100}%` }} />
                             </div>
                           </div>
@@ -1906,8 +2129,8 @@ function HodnoceniHracuContent() {
         {tab === 'taktika' && (
           <div className="space-y-3 sm:space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base sm:text-lg font-semibold text-white">Taktické schéma</h2>
-              <p className="text-white/50 text-xs sm:text-sm">
+              <h2 className="text-base sm:text-lg font-semibold text-foreground">Taktické schéma</h2>
+              <p className="text-foreground/50 text-xs sm:text-sm">
                 Přetáhněte hráče na hřiště (max 11). Tužka: kreslení v zelené, červené nebo tmavě žluté.
               </p>
             </div>
@@ -1915,18 +2138,95 @@ function HodnoceniHracuContent() {
           </div>
         )}
 
+        {ucastModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm" onClick={() => setUcastModal(null)}>
+            <div className="glass-card rounded-2xl p-6 w-full max-w-md shadow-2xl border border-border" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                Účast – kdo se hlásí
+              </h3>
+              <p className="text-foreground/70 text-sm mb-2">
+                {formatEventDateTime(ucastModal.date, ucastModal.startTime)} – {EVENT_TYPE_LABELS[ucastModal.eventType]}
+              </p>
+              {(ucastModal.location || ucastModal.note) && (
+                <div className="text-foreground/70 text-sm mb-4 space-y-1">
+                  {ucastModal.location && <p>{ucastModal.location}</p>}
+                  {ucastModal.note && <p className="italic">Poznámka: {ucastModal.note}</p>}
+                </div>
+              )}
+              {ucastModal.shareToken ? (
+                <>
+                  <p className="text-foreground/80 text-sm mb-2">Odkaz pro hráče (ohlásí se do půlnoci před událostí):</p>
+                  <div className="flex gap-2 mb-4">
+                    <input
+                      type="text"
+                      readOnly
+                      value={`${typeof window !== 'undefined' ? window.location.origin : ''}/udalost/${ucastModal.shareToken}`}
+                      className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-surface-hover text-foreground text-sm font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/udalost/${ucastModal!.shareToken}`;
+                        navigator.clipboard.writeText(url).then(() => alert('Odkaz zkopírován'), () => alert('Kopírování se nepovedlo'));
+                      }}
+                      className="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium shrink-0"
+                    >
+                      Kopírovat
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-amber-400/90 text-sm mb-4">Událost nemá odkaz. Nejprve uložte událost s odkazem pro účast.</p>
+              )}
+              {isUcastClosed(ucastModal.date) && !ucastModalFinalized && (
+                <p className="text-amber-400 text-sm mb-4">Odpovědi se uzavírají den před událostí do půlnoci. Účast již nelze měnit.</p>
+              )}
+              {ucastModalFinalized && (
+                <p className="text-accent/90 text-sm mb-4">Docházka byla odeslána. Níže finální přehled zúčastněných.</p>
+              )}
+              <div className="space-y-2 max-h-48 overflow-y-auto mb-4">
+                {players.map((p) => {
+                  const a = ucastModalData.find((x) => x.playerId === p.id);
+                  const responded = a?.responded ?? false;
+                  const attended = a?.attended ?? false;
+                  const reason = a?.absenceReason;
+                  const status = !responded ? '?' : attended ? '✓' : '✗';
+                  const statusClass = !responded ? 'text-foreground/50' : attended ? 'text-accent' : 'text-amber-400';
+                  const label = ucastModalFinalized
+                    ? (attended ? 'Přišel' : 'Nepřišel')
+                    : !responded
+                      ? 'Neodpověděl'
+                      : attended
+                        ? 'Budu'
+                        : `Nebudu${reason ? `: ${reason}` : ''}`;
+                  return (
+                    <div key={p.id} className="py-2 px-3 rounded-lg bg-surface flex justify-between items-center">
+                      <span className="text-foreground">{p.name}</span>
+                      <span className={`${statusClass} font-medium`} title={label}>
+                        {status} {label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <button type="button" onClick={() => setUcastModal(null)} className="w-full px-4 py-3 rounded-xl bg-surface-hover text-foreground hover:bg-white/20 font-medium">
+                Zavřít
+              </button>
+            </div>
+          </div>
+        )}
+
         {attendanceModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setAttendanceModal(null)}>
-            <div className="glass-card rounded-2xl p-6 w-full max-w-md shadow-2xl border border-white/10" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold text-white mb-2">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm" onClick={() => setAttendanceModal(null)}>
+            <div className="glass-card rounded-2xl p-6 w-full max-w-md shadow-2xl border border-border" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 Docházka – finální přehled zúčastněných
               </h3>
-              <p className="text-white/70 text-sm mb-2">
-                {new Date(attendanceModal.date).toLocaleDateString('cs-CZ')}
-                {attendanceModal.startTime ? ` ${attendanceModal.startTime}` : ''} – {EVENT_TYPE_LABELS[attendanceModal.eventType]}
+              <p className="text-foreground/70 text-sm mb-2">
+                {formatEventDateTime(attendanceModal.date, attendanceModal.startTime)} – {EVENT_TYPE_LABELS[attendanceModal.eventType]}
               </p>
               {(attendanceModal.location || attendanceModal.note) && (
-                <div className="text-white/70 text-sm mb-4 space-y-1">
+                <div className="text-foreground/70 text-sm mb-4 space-y-1">
                   {attendanceModal.location && <p>{attendanceModal.location}</p>}
                   {attendanceModal.note && <p className="italic">Poznámka: {attendanceModal.note}</p>}
                 </div>
@@ -1938,7 +2238,7 @@ function HodnoceniHracuContent() {
                     : 'Docházku lze zadat až 15 minut před začátkem události.'}
                 </p>
               ) : (
-                <p className="text-white/60 text-sm mb-4">Zaklikněte hráče, kteří skutečně přišli. Odeslání je finální a nelze měnit.</p>
+                <p className="text-foreground/60 text-sm mb-4">Zaklikněte hráče, kteří skutečně přišli. Odeslání je finální a nelze měnit.</p>
               )}
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {players.map((p) => {
@@ -1946,7 +2246,7 @@ function HodnoceniHracuContent() {
                   const attended = a?.attended ?? false;
                   const reason = a?.absenceReason;
                   return (
-                    <div key={p.id} className="py-2 px-3 rounded-lg hover:bg-white/5">
+                    <div key={p.id} className="py-2 px-3 rounded-lg hover:bg-surface">
                       <label className={`flex items-center gap-3 ${attendanceModalClosed ? 'cursor-default' : 'cursor-pointer'}`}>
                         <input
                           type="checkbox"
@@ -1955,17 +2255,17 @@ function HodnoceniHracuContent() {
                           disabled={attendanceModalClosed}
                           className="w-5 h-5 rounded accent-violet-500 disabled:opacity-70"
                         />
-                        <span className="text-white">{p.name}</span>
+                        <span className="text-foreground">{p.name}</span>
                       </label>
                       {!attended && reason && (
-                        <p className="text-white/50 text-xs mt-1 ml-8 italic">Důvod: {reason}</p>
+                        <p className="text-foreground/50 text-xs mt-1 ml-8 italic">Důvod: {reason}</p>
                       )}
                     </div>
                   );
                 })}
               </div>
               <div className="flex gap-2 mt-4">
-                <button type="button" onClick={() => setAttendanceModal(null)} className="flex-1 px-4 py-3 rounded-xl bg-white/10 text-white hover:bg-white/20 font-medium">
+                <button type="button" onClick={() => setAttendanceModal(null)} className="flex-1 px-4 py-3 rounded-xl bg-surface-hover text-foreground hover:bg-white/20 font-medium">
                   Zavřít
                 </button>
                 {!attendanceModalClosed && (
@@ -1977,6 +2277,82 @@ function HodnoceniHracuContent() {
             </div>
           </div>
         )}
+
+        {playerCardModal && (
+          <PlayerCardModal
+            entry={playerCardModal}
+            canadianStats={canadianStats}
+            attendanceStats={attendanceStats}
+            onClose={() => setPlayerCardModal(null)}
+          />
+        )}
+      </MotionPage>
+    </div>
+  );
+}
+
+function PlayerCardModal({
+  entry,
+  canadianStats,
+  attendanceStats,
+  onClose,
+}: {
+  entry: LeaderboardEntry;
+  canadianStats: CanadianEntry[];
+  attendanceStats: AttendanceStat[];
+  onClose: () => void;
+}) {
+  const badges = getPlayerBadges(entry.playerId, canadianStats, attendanceStats);
+  const { nickname, icon } = getPlayerNicknameAndIcon(entry, badges, canadianStats, attendanceStats);
+  const canadian = canadianStats.find((c) => c.playerId === entry.playerId);
+  const attendance = attendanceStats.find((a) => a.playerId === entry.playerId);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="glass-card rounded-2xl p-6 w-full max-w-md shadow-2xl border border-border max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-6">
+          <p className="text-2xl text-foreground/80 mb-0.5">
+            <span className="mr-2">{icon}</span>
+            {nickname}
+          </p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight leading-tight">
+            {entry.playerName}
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 text-center">
+          <div className="py-3 px-4 rounded-xl bg-surface border border-border">
+            <p className="text-foreground/50 text-xs uppercase tracking-wider mb-1">Hodnocení</p>
+            <p className="text-violet-400 font-bold text-xl">{entry.avgScore} / 10</p>
+            <p className="text-foreground/40 text-xs">({entry.voteCount} hlasů)</p>
+          </div>
+          <div className="py-3 px-4 rounded-xl bg-surface border border-border">
+            <p className="text-foreground/50 text-xs uppercase tracking-wider mb-1">Docházka</p>
+            <p className="text-accent font-bold text-xl">{attendance ? Math.round(attendance.attendancePct) : 0} %</p>
+            <p className="text-foreground/40 text-xs">
+              {attendance ? `${attendance.matchCount} zápasů, ${attendance.trainingCount} tréninků` : '–'}
+            </p>
+          </div>
+          <div className="py-3 px-4 rounded-xl bg-surface border border-border">
+            <p className="text-foreground/50 text-xs uppercase tracking-wider mb-1">Góly</p>
+            <p className="text-accent font-bold text-xl">{canadian?.goals ?? 0}</p>
+          </div>
+          <div className="py-3 px-4 rounded-xl bg-surface border border-border">
+            <p className="text-foreground/50 text-xs uppercase tracking-wider mb-1">Asistence</p>
+            <p className="text-accent font-bold text-xl">{canadian?.assists ?? 0}</p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full mt-6 px-4 py-3 rounded-xl bg-surface-hover text-foreground hover:bg-white/20 font-medium"
+        >
+          Zavřít
+        </button>
       </div>
     </div>
   );
@@ -1985,8 +2361,8 @@ function HodnoceniHracuContent() {
 export default function HodnoceniHracuPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen animated-background flex items-center justify-center">
-        <LoadingSpinner size="lg" />
+      <div className="min-h-screen animated-background py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
+        <GhostHodnoceni />
       </div>
     }>
       <HodnoceniHracuContent />
