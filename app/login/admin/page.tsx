@@ -132,7 +132,7 @@ export default function AdminLoginPage() {
           <motion.button
             type="submit"
             disabled={loading}
-            className="w-full py-4 bg-violet-500 hover:bg-violet-600 text-white font-semibold text-lg rounded-2xl shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden flex items-center justify-center space-x-2"
+            className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold text-lg rounded-2xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden flex items-center justify-center space-x-2"
             whileHover={loading ? undefined : { y: -1.5, scale: 1.01 }}
             whileTap={loading ? undefined : { scale: 0.98 }}
           >

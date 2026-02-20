@@ -349,7 +349,7 @@ export default function RegisterPage() {
                       key={index}
                       type="button"
                       onClick={() => handleSuggestionClick(club)}
-                      className="w-full text-left px-4 py-3 hover:bg-violet-600/20 dark:hover:bg-violet-600/30 transition-colors text-foreground dark:text-white first:rounded-t-xl last:rounded-b-xl border-b border-border last:border-b-0"
+                      className="w-full text-left px-4 py-3 hover:bg-blue-600/20 dark:hover:bg-blue-600/30 transition-colors text-foreground dark:text-white first:rounded-t-xl last:rounded-b-xl border-b border-border last:border-b-0"
                     >
                       <div className="flex items-center space-x-2">
                         <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -508,7 +508,7 @@ export default function RegisterPage() {
                     }}
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                       formData.leagues.includes(league)
-                        ? 'bg-violet-500/30 text-white border border-violet-400/50'
+                        ? 'bg-blue-500/30 text-white border border-blue-400/50'
                         : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
                     }`}
                   >
@@ -726,7 +726,7 @@ export default function RegisterPage() {
                       type="file"
                       accept="image/*"
                       onChange={handleLogoChange}
-                      className="w-full px-3 py-2 rounded-lg glass-input text-foreground file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-violet-600 file:text-white file:cursor-pointer text-sm"
+                      className="w-full px-3 py-2 rounded-lg glass-input text-foreground file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-600 file:text-white file:cursor-pointer text-sm"
                     />
                   </div>
                 </div>
@@ -780,7 +780,7 @@ export default function RegisterPage() {
           <motion.button
             type="submit"
             disabled={loading}
-            className="w-full py-4 bg-violet-500 hover:bg-violet-600 text-white font-semibold text-lg rounded-2xl shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden flex items-center justify-center space-x-2"
+            className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold text-lg rounded-2xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden flex items-center justify-center space-x-2"
             whileHover={loading ? undefined : { y: -1.5, scale: 1.01 }}
             whileTap={loading ? undefined : { scale: 0.98 }}
           >

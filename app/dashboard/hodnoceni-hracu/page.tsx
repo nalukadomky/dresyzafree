@@ -3,11 +3,12 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { GhostHodnoceni } from '@/components/GhostLoader';
+import { GhostHodnoceni, GhostOverviewCards } from '@/components/GhostLoader';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import TacticsBoard from '@/components/TacticsBoard';
 import ThemeToggle from '@/components/ThemeToggle';
 import { MotionPage } from '@/components/Motion';
+import { Reorder, useDragControls } from 'framer-motion';
 import {
   Select,
   SelectContent,
@@ -71,6 +72,220 @@ interface AttendanceStat {
 }
 
 type Tab = 'dashboard' | 'manage' | 'vote' | 'leaderboard' | 'canadian' | 'calendar' | 'taktika';
+type OverviewCardId = 'lastMatch' | 'upcomingEvents' | 'teamForm';
+type OverviewCardSize = 'small' | 'wide' | 'full';
+type OverviewCardLayoutItem = { id: OverviewCardId; order: number; size: OverviewCardSize; visible: boolean };
+type TeamOverviewLayout = { version: 1; cards: OverviewCardLayoutItem[] };
+
+const TAB_ORDER_KEY = 'hodnoceni-tab-order-v1';
+const DEFAULT_TAB_ORDER: Tab[] = ['dashboard', 'manage', 'vote', 'leaderboard', 'canadian', 'calendar', 'taktika'];
+const OVERVIEW_CARD_IDS: OverviewCardId[] = ['lastMatch', 'upcomingEvents', 'teamForm'];
+const DEFAULT_OVERVIEW_LAYOUT: TeamOverviewLayout = {
+  version: 1,
+  cards: [
+    { id: 'lastMatch', order: 0, size: 'full', visible: true },
+    { id: 'upcomingEvents', order: 1, size: 'small', visible: true },
+    { id: 'teamForm', order: 2, size: 'wide', visible: true },
+  ],
+};
+
+function tabLabel(tab: Tab): string {
+  if (tab === 'dashboard') return 'Přehled';
+  if (tab === 'manage') return 'Hráči a zápasy';
+  if (tab === 'vote') return 'Hlasovat';
+  if (tab === 'leaderboard') return 'Žebříček';
+  if (tab === 'canadian') return 'Kanadské bodování';
+  if (tab === 'calendar') return 'Události/docházka';
+  return 'Taktika';
+}
+
+function normalizeTabOrder(value: unknown): Tab[] {
+  if (!Array.isArray(value)) return DEFAULT_TAB_ORDER;
+  const isTab = (v: unknown): v is Tab => typeof v === 'string' && DEFAULT_TAB_ORDER.includes(v as Tab);
+  const incoming = value.filter(isTab);
+  const unique = Array.from(new Set(incoming));
+  const missing = DEFAULT_TAB_ORDER.filter((t) => !unique.includes(t));
+  return [...unique, ...missing];
+}
+
+function overviewCardLabel(id: OverviewCardId): string {
+  if (id === 'lastMatch') return 'Poslední zápas';
+  if (id === 'upcomingEvents') return 'Následující události';
+  return 'Forma týmu a hráčů';
+}
+
+function normalizeOverviewLayout(value: unknown): TeamOverviewLayout {
+  if (!value || typeof value !== 'object') return DEFAULT_OVERVIEW_LAYOUT;
+  const src = value as { version?: unknown; cards?: unknown };
+  if (src.version !== 1 || !Array.isArray(src.cards)) return DEFAULT_OVERVIEW_LAYOUT;
+
+  const cards: OverviewCardLayoutItem[] = [];
+  const seen = new Set<OverviewCardId>();
+  for (const raw of src.cards) {
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as Partial<OverviewCardLayoutItem>;
+    if (!item.id || !OVERVIEW_CARD_IDS.includes(item.id)) continue;
+    if (seen.has(item.id)) continue;
+    const size: OverviewCardSize =
+      item.size === 'small' || item.size === 'wide' || item.size === 'full' ? item.size : 'small';
+    cards.push({
+      id: item.id,
+      order: Number.isInteger(item.order) ? Number(item.order) : cards.length,
+      size,
+      visible: typeof item.visible === 'boolean' ? item.visible : true,
+    });
+    seen.add(item.id);
+  }
+
+  for (const fallback of DEFAULT_OVERVIEW_LAYOUT.cards) {
+    if (!seen.has(fallback.id)) cards.push({ ...fallback });
+  }
+
+  cards.sort((a, b) => a.order - b.order);
+  return {
+    version: 1,
+    cards: cards.map((c, index) => ({ ...c, order: index })),
+  };
+}
+
+function toOverviewPayload(layout: OverviewCardLayoutItem[]): TeamOverviewLayout {
+  const normalized = normalizeOverviewLayout({ version: 1, cards: layout });
+  return { version: 1, cards: normalized.cards };
+}
+
+function layoutItemClass(size: OverviewCardSize): string {
+  if (size === 'full') return 'col-span-full lg:col-span-2 xl:col-span-3';
+  if (size === 'wide') return 'col-span-full lg:col-span-2 xl:col-span-2';
+  return 'col-span-full lg:col-span-1 xl:col-span-1';
+}
+
+function SortableOverviewCard({
+  item,
+  editMode,
+  onToggleVisibility,
+  onSizeChange,
+  children,
+}: {
+  item: OverviewCardLayoutItem;
+  editMode: boolean;
+  onToggleVisibility: (id: OverviewCardId) => void;
+  onSizeChange: (id: OverviewCardId, size: OverviewCardSize) => void;
+  children: React.ReactNode;
+}) {
+  const dragControls = useDragControls();
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPressTimer = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  return (
+    <Reorder.Item
+      value={item}
+      dragListener={false}
+      dragControls={dragControls}
+      className={`${layoutItemClass(item.size)} ${editMode ? 'touch-none' : ''}`}
+      whileDrag={{ scale: 1.01, zIndex: 30 }}
+    >
+      <div className="relative">
+        {editMode && (
+          <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5 p-1.5 rounded-lg bg-black/45 border border-white/15 backdrop-blur-sm">
+            <button
+              type="button"
+              className="px-2 py-1 rounded-md text-xs bg-surface-hover text-foreground border border-border cursor-grab active:cursor-grabbing"
+              aria-label={`Přesunout ${overviewCardLabel(item.id)}`}
+              onPointerDown={(e) => {
+                clearPressTimer();
+                pressTimerRef.current = setTimeout(() => {
+                  dragControls.start(e);
+                }, 220);
+              }}
+              onPointerUp={clearPressTimer}
+              onPointerLeave={clearPressTimer}
+              onPointerCancel={clearPressTimer}
+            >
+              ⋮⋮
+            </button>
+            <Select value={item.size} onValueChange={(v) => onSizeChange(item.id, v as OverviewCardSize)}>
+              <SelectTrigger className="h-7 w-[96px] rounded-md glass-input text-xs text-foreground focus:ring-2 focus:ring-blue-400">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="small">Small</SelectItem>
+                <SelectItem value="wide">Wide</SelectItem>
+                <SelectItem value="full">Full</SelectItem>
+              </SelectContent>
+            </Select>
+            <button
+              type="button"
+              onClick={() => onToggleVisibility(item.id)}
+              className="px-2 py-1 rounded-md text-xs bg-surface-hover text-foreground border border-border"
+            >
+              Skrýt
+            </button>
+          </div>
+        )}
+        {children}
+      </div>
+    </Reorder.Item>
+  );
+}
+
+function ReorderableTabItem({
+  tabKey,
+  active,
+  onSelect,
+}: {
+  tabKey: Tab;
+  active: boolean;
+  onSelect: (tab: Tab) => void;
+}) {
+  const dragControls = useDragControls();
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPressTimer = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  return (
+    <Reorder.Item
+      value={tabKey}
+      drag="x"
+      dragListener={false}
+      dragControls={dragControls}
+      className="shrink-0"
+      whileDrag={{ scale: 1.02, zIndex: 40 }}
+    >
+      <button
+        type="button"
+        onClick={() => onSelect(tabKey)}
+        onPointerDown={(e) => {
+          clearPressTimer();
+          pressTimerRef.current = setTimeout(() => {
+            dragControls.start(e);
+          }, 220);
+        }}
+        onPointerUp={clearPressTimer}
+        onPointerLeave={clearPressTimer}
+        onPointerCancel={clearPressTimer}
+        className={`shrink-0 px-3 py-2 sm:px-4 rounded-xl font-medium transition-all text-sm sm:text-base touch-none ${
+          active
+            ? 'bg-blue-500/30 text-foreground border border-blue-400/50'
+            : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
+        }`}
+        title="Podržte a přetáhněte pro změnu pořadí"
+      >
+        {tabLabel(tabKey)}
+      </button>
+    </Reorder.Item>
+  );
+}
 
 interface CanadianEntry {
   playerId: string;
@@ -229,7 +444,7 @@ function MatchResultEdit({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="text-violet-400 hover:text-violet-300 text-sm px-3 py-1 rounded hover:bg-surface"
+        className="text-blue-400 hover:text-blue-300 text-sm px-3 py-1 rounded hover:bg-surface"
         title={scoreFull ? `${scoreFull} – upravit` : 'Přidat skóre'}
       >
         {scoreShort ?? 'Přidat skóre'}
@@ -343,11 +558,18 @@ function HodnoceniHracuContent() {
   const [teamId, setTeamId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialDataReady, setInitialDataReady] = useState(false);
+  const [dashboardCardsLoading, setDashboardCardsLoading] = useState(true);
   const [tab, setTab] = useState<Tab>(
     tabParam === 'dashboard' || tabParam === 'calendar' || tabParam === 'vote' || tabParam === 'leaderboard' || tabParam === 'canadian' || tabParam === 'taktika'
       ? tabParam as Tab
       : 'dashboard'
   );
+  const [tabOrder, setTabOrder] = useState<Tab[]>(DEFAULT_TAB_ORDER);
+  const [overviewLayout, setOverviewLayout] = useState<OverviewCardLayoutItem[]>(DEFAULT_OVERVIEW_LAYOUT.cards);
+  const [overviewDraft, setOverviewDraft] = useState<OverviewCardLayoutItem[]>(DEFAULT_OVERVIEW_LAYOUT.cards);
+  const [overviewEditMode, setOverviewEditMode] = useState(false);
+  const [savingOverviewLayout, setSavingOverviewLayout] = useState(false);
 
   const [teamName, setTeamName] = useState('');
   const [teamBackgroundColor, setTeamBackgroundColor] = useState<string | undefined>();
@@ -433,20 +655,60 @@ function HodnoceniHracuContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(TAB_ORDER_KEY);
+      if (!raw) return;
+      setTabOrder(normalizeTabOrder(JSON.parse(raw)));
+    } catch {
+      setTabOrder(DEFAULT_TAB_ORDER);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabOrder));
+    } catch {
+      // ignore storage errors
+    }
+  }, [tabOrder]);
+
+  useEffect(() => {
     if (!teamId || !token) return;
-    fetchPlayers();
-    fetchMatches();
-    fetchEvents();
-    fetch(`/api/teams/${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.ok && r.json())
-      .then((d) => {
-        if (d?.team) {
+    let active = true;
+    const initLoad = async () => {
+      setInitialDataReady(false);
+      setDashboardCardsLoading(true);
+      const teamFetch = fetch(`/api/teams/${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!active || !d?.team) return;
           if (d.team.teamName) setTeamName(d.team.teamName);
           setTeamBackgroundColor(d.team.backgroundColor);
           setCoachPlayerId(d.team.coachPlayerId ?? null);
-        }
-      })
-      .catch(() => {});
+          const normalized = normalizeOverviewLayout(d.team.overviewLayout);
+          setOverviewLayout(normalized.cards);
+          setOverviewDraft(normalized.cards);
+        })
+        .catch(() => {});
+
+      await Promise.allSettled([
+        fetchPlayers(),
+        fetchMatches(),
+        fetchEvents(),
+        fetchAttendanceStats(),
+        fetchLeaderboard(),
+        teamFetch,
+      ]);
+
+      if (!active) return;
+      setInitialDataReady(true);
+      setDashboardCardsLoading(false);
+    };
+    initLoad();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId, token]);
 
   useEffect(() => {
@@ -1009,6 +1271,60 @@ function HodnoceniHracuContent() {
     }
   };
 
+  const sortedOverview = [...overviewLayout].sort((a, b) => a.order - b.order);
+  const sortedOverviewDraft = [...overviewDraft].sort((a, b) => a.order - b.order);
+  const activeOverview = overviewEditMode ? sortedOverviewDraft : sortedOverview;
+  const visibleOverview = activeOverview.filter((c) => c.visible);
+
+  const setOverviewDraftWithNormalize = (next: OverviewCardLayoutItem[]) => {
+    setOverviewDraft(normalizeOverviewLayout({ version: 1, cards: next }).cards);
+  };
+
+  const handleOverviewReorder = (nextVisible: OverviewCardLayoutItem[]) => {
+    if (!overviewEditMode) return;
+    setOverviewDraft((prev) => {
+      const hidden = [...prev].sort((a, b) => a.order - b.order).filter((c) => !c.visible);
+      const merged = [...nextVisible.map((c) => ({ ...c, visible: true })), ...hidden];
+      return merged.map((c, index) => ({ ...c, order: index }));
+    });
+  };
+
+  const handleOverviewSizeChange = (id: OverviewCardId, size: OverviewCardSize) => {
+    setOverviewDraft((prev) => prev.map((c) => (c.id === id ? { ...c, size } : c)));
+  };
+
+  const handleOverviewToggleVisibility = (id: OverviewCardId) => {
+    setOverviewDraft((prev) => prev.map((c) => (c.id === id ? { ...c, visible: !c.visible } : c)));
+  };
+
+  const saveOverviewLayout = async () => {
+    if (!teamId || !token) return;
+    setSavingOverviewLayout(true);
+    try {
+      const payload = toOverviewPayload(overviewDraft);
+      const res = await fetch(`/api/teams/${teamId}`, {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify({ overviewLayout: payload }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d?.error || `Nepodařilo se uložit rozložení (${res.status})`);
+        return;
+      }
+      setOverviewLayout(payload.cards);
+      setOverviewDraft(payload.cards);
+      setOverviewEditMode(false);
+    } finally {
+      setSavingOverviewLayout(false);
+    }
+  };
+
+  const cancelOverviewEdit = () => {
+    setOverviewDraft(sortedOverview);
+    setOverviewEditMode(false);
+  };
+
   if (loading || !teamId) {
     return (
       <div className="min-h-screen animated-background py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
@@ -1077,244 +1393,315 @@ function HodnoceniHracuContent() {
       <MotionPage className="w-full max-w-7xl mx-auto relative z-10 pt-12 sm:pt-14">
         <h1 className="text-xl sm:text-2xl font-semibold text-foreground mb-4 sm:mb-6">Hodnocení hráčů</h1>
 
-        <div className="flex gap-1.5 sm:gap-2 mb-4 sm:mb-6 overflow-x-auto pb-1 -mx-1 flex-nowrap sm:flex-wrap">
-          {(['dashboard', 'manage', 'vote', 'leaderboard', 'canadian', 'calendar', 'taktika'] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`shrink-0 px-3 py-2 sm:px-4 rounded-xl font-medium transition-all text-sm sm:text-base ${
-                tab === t
-                  ? 'bg-violet-500/30 text-foreground border border-violet-400/50'
-                  : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
-              }`}
-            >
-              {t === 'dashboard' && 'Přehled'}
-              {t === 'manage' && 'Hráči a zápasy'}
-              {t === 'vote' && 'Hlasovat'}
-              {t === 'leaderboard' && 'Žebříček'}
-              {t === 'canadian' && 'Kanadské bodování'}
-              {t === 'calendar' && 'Události/docházka'}
-              {t === 'taktika' && 'Taktika'}
-            </button>
+        <Reorder.Group
+          axis="x"
+          values={tabOrder}
+          onReorder={(nextOrder) => setTabOrder(normalizeTabOrder(nextOrder))}
+          className="flex gap-1.5 sm:gap-2 mb-4 sm:mb-6 overflow-x-auto pb-1 -mx-1 flex-nowrap sm:flex-wrap"
+        >
+          {tabOrder.map((t) => (
+            <ReorderableTabItem key={t} tabKey={t} active={tab === t} onSelect={setTab} />
           ))}
-        </div>
+        </Reorder.Group>
 
         {tab === 'dashboard' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 lg:gap-6">
-            {/* Poslední odehraný zápas */}
-            {(() => {
-              const today = new Date().toISOString().slice(0, 10);
-              const pastMatches = matches.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date));
-              const lastMatch = pastMatches[0];
-              if (!lastMatch) return null;
-              const scoreStr =
-                lastMatch.goalsFor != null && lastMatch.goalsAgainst != null
-                  ? `${teamName || 'Náš tým'} ${lastMatch.goalsFor} : ${lastMatch.goalsAgainst} ${lastMatch.opponent || 'Soupeř'}`
-                  : lastMatch.result || '—';
-              const pom = lastMatch.playerOfMatch;
-              return (
-                <div className="glass-card rounded-2xl p-4 sm:p-6 border border-amber-500/30 bg-amber-500/5 col-span-full">
-                  <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 sm:mb-3">Poslední odehraný zápas</h2>
-                  <div className="space-y-1">
-                    <p className="text-foreground font-medium">
-                      {formatEventDateTime(lastMatch.date, lastMatch.startTime)} vs {lastMatch.opponent || 'soupeř'}
-                    </p>
-                    <p className="text-violet-400 font-semibold text-lg">{scoreStr}</p>
-                    {pom && (
-                      <p className="text-amber-400 font-medium flex items-center gap-1.5 mt-2">
-                        <span aria-hidden>⭐</span> Hráč utkání: {pom.playerName}
-                      </p>
-                    )}
-                  </div>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-foreground/65">
+                Nastavte si pořadí a velikost boxů podle toho, co chcete vidět jako první.
+              </p>
+              {overviewEditMode ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={cancelOverviewEdit}
+                    disabled={savingOverviewLayout}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-surface-hover text-foreground border border-border disabled:opacity-60"
+                  >
+                    Zrušit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveOverviewLayout}
+                    disabled={savingOverviewLayout}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-60"
+                  >
+                    {savingOverviewLayout ? 'Ukládám...' : 'Uložit'}
+                  </button>
                 </div>
-              );
-            })()}
-
-            {/* Následující události */}
-            <div className="glass-card rounded-2xl p-4 sm:p-6">
-              <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3 sm:mb-4">Následující události</h2>
-              {(() => {
-                const today = new Date().toISOString().slice(0, 10);
-                const upcomingEvents = events.filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
-                const upcomingMatches = matches.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date));
-                const hasUpcoming = upcomingEvents.length > 0 || upcomingMatches.length > 0;
-
-                if (!hasUpcoming) {
-                  return <p className="text-foreground/50 italic">Zatím žádné nadcházející události ani zápasy.</p>;
-                }
-
-                return (
-                  <div className="space-y-4">
-                    {upcomingEvents.length > 0 && (
-                      <div>
-                        {upcomingEvents.slice(0, 5).map((ev) => {
-                          const sum = eventAttendanceSummary[ev.id];
-                          return (
-                            <div
-                              key={ev.id}
-                              className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 rounded-lg bg-surface border border-border mb-2 gap-2"
-                            >
-                              <span className="text-foreground text-sm sm:text-base min-w-0">
-                                {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType]}
-                                {ev.location && ` • ${ev.location}`}
-                                {ev.opponent && ev.opponent !== ev.location && ` vs ${ev.opponent}`}
-                              </span>
-                              <div className="flex items-center gap-3 shrink-0">
-                                {sum && (
-                                  <span className="text-foreground/60 text-xs tabular-nums whitespace-nowrap" title="zúčastní • nezúčastní • neodpověděli">
-                                    {sum.attended}✓ {sum.notAttended}✗ {sum.noResponse}?
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => openUcastModal(ev)}
-                                  className="text-violet-400 hover:text-violet-300 text-sm"
-                                  title="Odkaz pro hráče + přehled, kdo se hlásí (do půlnoci před událostí)"
-                                >
-                                  Účast
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {upcomingEvents.length > 5 && (
-                          <button
-                            type="button"
-                            onClick={() => setTab('calendar')}
-                            className="text-foreground/60 hover:text-foreground text-sm mt-2"
-                          >
-                            Zobrazit všech {upcomingEvents.length} událostí →
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {upcomingMatches.length > 0 && (
-                      <div>
-                        <h3 className="text-foreground/70 text-sm font-medium mb-2">Zápasy</h3>
-                        {upcomingMatches.slice(0, 3).map((m) => (
-                          <div
-                            key={m.id}
-                            className="py-2 px-3 rounded-lg bg-surface border border-border mb-2 text-foreground"
-                          >
-                            {formatEventDateTime(m.date, m.startTime)} vs {m.opponent || 'soupeř'}
-                          </div>
-                        ))}
-                        {upcomingMatches.length > 3 && (
-                          <p className="text-foreground/50 text-sm mt-1">+ {upcomingMatches.length - 3} dalších</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOverviewDraft(sortedOverview);
+                    setOverviewEditMode(true);
+                  }}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-surface-hover text-foreground border border-border hover:bg-white/20"
+                >
+                  Upravit přehled
+                </button>
+              )}
             </div>
 
-            {/* Graf formy */}
-            <div className="glass-card rounded-2xl p-4 sm:p-6 lg:col-span-2 xl:col-span-2">
-              <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2">Forma týmu a hráčů</h2>
-              <p className="text-foreground/60 text-sm mb-4">
-                Na základě účasti na tréninzích, hodnocení ze zápasů a výsledků.
-              </p>
-              {attendanceStats.length === 0 ? (
-                <p className="text-foreground/50 italic text-sm">
-                  Zatím nemáte dostatek dat. Přidejte tréninky, zaznamenávejte účast a hlasujte po zápasech.
-                </p>
-              ) : (
-                <div className="space-y-6">
-                  {/* Tým – průměr */}
-                  {(() => {
-                    const withData = attendanceStats.filter((s) => s.trainingCount > 0 || s.matchCount > 0);
-                    if (withData.length === 0)
-                      return (
-                        <p className="text-foreground/50 italic text-sm">Zatím žádná data pro výpočet formy.</p>
-                      );
-                    const avgAttendance =
-                      withData.reduce((a, s) => a + s.attendancePct, 0) / withData.length;
-                    const withMatches = withData.filter((s) => s.matchCount > 0);
-                    const avgScore =
-                      withMatches.length > 0
-                        ? withMatches.reduce((a, s) => a + s.avgMatchScore, 0) / withMatches.length
-                        : 0;
-                    const formScore = Math.round(
-                      (avgAttendance / 100) * 50 + (avgScore / 10) * 50
-                    );
+            {overviewEditMode && (
+              <div className="glass-card rounded-xl p-3 border border-border">
+                <p className="text-sm text-foreground/70 mb-2">Zobrazené boxy</p>
+                <div className="flex flex-wrap gap-2">
+                  {sortedOverviewDraft.map((item) => (
+                    <button
+                      key={`toggle-${item.id}`}
+                      type="button"
+                      onClick={() => handleOverviewToggleVisibility(item.id)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs border transition-colors ${
+                        item.visible
+                          ? 'bg-blue-500/20 border-blue-400/40 text-foreground'
+                          : 'bg-surface border-border text-foreground/60'
+                      }`}
+                    >
+                      {item.visible ? '✓' : '○'} {overviewCardLabel(item.id)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-                    const recentMatches = matches
-                      .filter((m) => m.date <= new Date().toISOString().slice(0, 10))
-                      .sort((a, b) => b.date.localeCompare(a.date))
-                      .slice(0, 5);
-                    const matchesWithScore = recentMatches.filter(
-                      (m) => m.goalsFor != null && m.goalsAgainst != null
-                    );
-                    const wins = matchesWithScore.filter((m) => m.goalsFor! > m.goalsAgainst!).length;
-                    const draws = matchesWithScore.filter((m) => m.goalsFor === m.goalsAgainst).length;
-                    const losses = matchesWithScore.filter((m) => m.goalsFor! < m.goalsAgainst!).length;
-
-                    return (
-                      <div className="space-y-4">
-                        <div>
-                          <h3 className="text-foreground/80 font-medium mb-2 text-sm">Forma týmu</h3>
-                          <div className="flex gap-4 flex-wrap">
-                            <div className="flex-1 min-w-[120px]">
-                              <div className="flex justify-between text-xs mb-1">
-                                <span className="text-foreground/70">Forma</span>
-                                <span className="text-violet-400 font-semibold">{formScore} %</span>
-                              </div>
-                              <div className="h-3 rounded-full bg-surface-hover overflow-hidden">
-                                <div
-                                  className="h-full bg-gradient-to-r from-violet-500 to-accent rounded-full transition-all"
-                                  style={{ width: `${Math.min(100, formScore)}%` }}
-                                />
+            {dashboardCardsLoading || !initialDataReady ? (
+              <GhostOverviewCards />
+            ) : (
+              <Reorder.Group
+                axis="y"
+                values={visibleOverview}
+                onReorder={handleOverviewReorder}
+                className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 lg:gap-6"
+              >
+                    {visibleOverview.map((layoutItem) => {
+                      if (layoutItem.id === 'lastMatch') {
+                        const today = new Date().toISOString().slice(0, 10);
+                        const pastMatches = matches.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date));
+                        const lastMatch = pastMatches[0];
+                        if (!lastMatch) return null;
+                        const scoreStr =
+                          lastMatch.goalsFor != null && lastMatch.goalsAgainst != null
+                            ? `${teamName || 'Náš tým'} ${lastMatch.goalsFor} : ${lastMatch.goalsAgainst} ${lastMatch.opponent || 'Soupeř'}`
+                            : lastMatch.result || '—';
+                        const pom = lastMatch.playerOfMatch;
+                        return (
+                          <SortableOverviewCard
+                            key={layoutItem.id}
+                            item={layoutItem}
+                            editMode={overviewEditMode}
+                            onToggleVisibility={handleOverviewToggleVisibility}
+                            onSizeChange={handleOverviewSizeChange}
+                          >
+                            <div className="glass-card rounded-2xl p-4 sm:p-6 border border-amber-500/30 bg-amber-500/5">
+                              <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 sm:mb-3">Poslední odehraný zápas</h2>
+                              <div className="space-y-1">
+                                <p className="text-foreground font-medium">
+                                  {formatEventDateTime(lastMatch.date, lastMatch.startTime)} vs {lastMatch.opponent || 'soupeř'}
+                                </p>
+                                <p className="text-[#1f3768] dark:text-accent font-semibold text-lg">{scoreStr}</p>
+                                {pom && (
+                                  <p className="text-amber-400 font-medium flex items-center gap-1.5 mt-2">
+                                    <span aria-hidden>⭐</span> Hráč utkání: {pom.playerName}
+                                  </p>
+                                )}
                               </div>
                             </div>
-                            {matchesWithScore.length > 0 && (
-                              <div className="text-foreground/70 text-sm">
-                                Poslední zápasy: {wins}V {draws}R {losses}P
+                          </SortableOverviewCard>
+                        );
+                      }
+
+                      if (layoutItem.id === 'upcomingEvents') {
+                        const today = new Date().toISOString().slice(0, 10);
+                        const upcomingEvents = events.filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+                        const upcomingMatches = matches.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+                        const hasUpcoming = upcomingEvents.length > 0 || upcomingMatches.length > 0;
+
+                        return (
+                          <SortableOverviewCard
+                            key={layoutItem.id}
+                            item={layoutItem}
+                            editMode={overviewEditMode}
+                            onToggleVisibility={handleOverviewToggleVisibility}
+                            onSizeChange={handleOverviewSizeChange}
+                          >
+                            <div className="glass-card rounded-2xl p-4 sm:p-6">
+                              <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3 sm:mb-4">Následující události</h2>
+                              {!hasUpcoming ? (
+                                <p className="text-foreground/50 italic">Zatím žádné nadcházející události ani zápasy.</p>
+                              ) : (
+                                <div className="space-y-4">
+                                  {upcomingEvents.length > 0 && (
+                                    <div>
+                                      {upcomingEvents.slice(0, 5).map((ev) => {
+                                        const sum = eventAttendanceSummary[ev.id];
+                                        return (
+                                          <div
+                                            key={ev.id}
+                                            className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 rounded-lg bg-surface border border-border mb-2 gap-2"
+                                          >
+                                            <span className="text-foreground text-sm sm:text-base min-w-0">
+                                              {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType]}
+                                              {ev.location && ` • ${ev.location}`}
+                                              {ev.opponent && ev.opponent !== ev.location && ` vs ${ev.opponent}`}
+                                            </span>
+                                            <div className="flex items-center gap-3 shrink-0">
+                                              {sum && (
+                                                <span className="text-foreground/60 text-xs tabular-nums whitespace-nowrap" title="zúčastní • nezúčastní • neodpověděli">
+                                                  {sum.attended}✓ {sum.notAttended}✗ {sum.noResponse}?
+                                                </span>
+                                              )}
+                                              <button
+                                                type="button"
+                                                onClick={() => openUcastModal(ev)}
+                                                className="text-blue-400 hover:text-blue-300 text-sm"
+                                                title="Odkaz pro hráče + přehled, kdo se hlásí (do půlnoci před událostí)"
+                                              >
+                                                Účast
+                                              </button>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                      {upcomingEvents.length > 5 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setTab('calendar')}
+                                          className="text-foreground/60 hover:text-foreground text-sm mt-2"
+                                        >
+                                          Zobrazit všech {upcomingEvents.length} událostí →
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                  {upcomingMatches.length > 0 && (
+                                    <div>
+                                      <h3 className="text-foreground/70 text-sm font-medium mb-2">Zápasy</h3>
+                                      {upcomingMatches.slice(0, 3).map((m) => (
+                                        <div
+                                          key={m.id}
+                                          className="py-2 px-3 rounded-lg bg-surface border border-border mb-2 text-foreground"
+                                        >
+                                          {formatEventDateTime(m.date, m.startTime)} vs {m.opponent || 'soupeř'}
+                                        </div>
+                                      ))}
+                                      {upcomingMatches.length > 3 && (
+                                        <p className="text-foreground/50 text-sm mt-1">+ {upcomingMatches.length - 3} dalších</p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </SortableOverviewCard>
+                        );
+                      }
+
+                      const withData = attendanceStats.filter((s) => s.trainingCount > 0 || s.matchCount > 0);
+                      const avgAttendance = withData.length > 0
+                        ? withData.reduce((a, s) => a + s.attendancePct, 0) / withData.length
+                        : 0;
+                      const withMatches = withData.filter((s) => s.matchCount > 0);
+                      const avgScore = withMatches.length > 0
+                        ? withMatches.reduce((a, s) => a + s.avgMatchScore, 0) / withMatches.length
+                        : 0;
+                      const formScore = Math.round((avgAttendance / 100) * 50 + (avgScore / 10) * 50);
+                      const recentMatches = matches
+                        .filter((m) => m.date <= new Date().toISOString().slice(0, 10))
+                        .sort((a, b) => b.date.localeCompare(a.date))
+                        .slice(0, 5);
+                      const matchesWithScore = recentMatches.filter((m) => m.goalsFor != null && m.goalsAgainst != null);
+                      const wins = matchesWithScore.filter((m) => m.goalsFor! > m.goalsAgainst!).length;
+                      const draws = matchesWithScore.filter((m) => m.goalsFor === m.goalsAgainst).length;
+                      const losses = matchesWithScore.filter((m) => m.goalsFor! < m.goalsAgainst!).length;
+
+                      return (
+                        <SortableOverviewCard
+                          key={layoutItem.id}
+                          item={layoutItem}
+                          editMode={overviewEditMode}
+                          onToggleVisibility={handleOverviewToggleVisibility}
+                          onSizeChange={handleOverviewSizeChange}
+                        >
+                          <div className="glass-card rounded-2xl p-4 sm:p-6">
+                            <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2">Forma týmu a hráčů</h2>
+                            <p className="text-foreground/60 text-sm mb-4">
+                              Na základě účasti na tréninzích, hodnocení ze zápasů a výsledků.
+                            </p>
+                            {attendanceStats.length === 0 ? (
+                              <p className="text-foreground/50 italic text-sm">
+                                Zatím nemáte dostatek dat. Přidejte tréninky, zaznamenávejte účast a hlasujte po zápasech.
+                              </p>
+                            ) : (
+                              <div className="space-y-6">
+                                {withData.length === 0 ? (
+                                  <p className="text-foreground/50 italic text-sm">Zatím žádná data pro výpočet formy.</p>
+                                ) : (
+                                  <div className="space-y-4">
+                                    <div>
+                                      <h3 className="text-foreground/80 font-medium mb-2 text-sm">Forma týmu</h3>
+                                      <div className="flex gap-4 flex-wrap">
+                                        <div className="flex-1 min-w-[120px]">
+                                          <div className="flex justify-between text-xs mb-1">
+                                            <span className="text-foreground/70">Forma</span>
+                                            <span className="text-[#1f3768] dark:text-accent font-semibold">{formScore} %</span>
+                                          </div>
+                                          <div className="h-3 rounded-full bg-surface-hover overflow-hidden">
+                                            <div
+                                              className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full transition-all"
+                                              style={{ width: `${Math.min(100, formScore)}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                        {matchesWithScore.length > 0 && (
+                                          <div className="text-foreground/70 text-sm">
+                                            Poslední zápasy: {wins}V {draws}R {losses}P
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <h3 className="text-foreground/80 font-medium mb-2 text-sm">Forma hráčů</h3>
+                                      <div className="space-y-3 max-h-64 overflow-y-auto">
+                                        {attendanceStats
+                                          .filter((s) => s.trainingCount > 0 || s.matchCount > 0)
+                                          .sort((a, b) => {
+                                            const fa = (a.attendancePct / 100) * 50 + (a.avgMatchScore / 10) * 50;
+                                            const fb = (b.attendancePct / 100) * 50 + (b.avgMatchScore / 10) * 50;
+                                            return fb - fa;
+                                          })
+                                          .map((s) => {
+                                            const formPct = Math.round((s.attendancePct / 100) * 50 + (s.avgMatchScore / 10) * 50);
+                                            return (
+                                              <div key={s.playerId} className="space-y-1">
+                                                <div className="flex justify-between items-center text-sm">
+                                                  <span className="text-foreground font-medium">{s.playerName}</span>
+                                                  <span className="text-[#1f3768] dark:text-accent tabular-nums">
+                                                    {formPct}% (účast {s.attendancePct}%, zápas {s.avgMatchScore}/10)
+                                                  </span>
+                                                </div>
+                                                <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
+                                                  <div
+                                                    className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full transition-all"
+                                                    style={{ width: `${Math.min(100, formPct)}%` }}
+                                                  />
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
-                        </div>
-
-                        {/* Jednotliví hráči */}
-                        <div>
-                          <h3 className="text-foreground/80 font-medium mb-2 text-sm">Forma hráčů</h3>
-                          <div className="space-y-3 max-h-64 overflow-y-auto">
-                            {attendanceStats
-                              .filter((s) => s.trainingCount > 0 || s.matchCount > 0)
-                              .sort((a, b) => {
-                                const fa = (a.attendancePct / 100) * 50 + (a.avgMatchScore / 10) * 50;
-                                const fb = (b.attendancePct / 100) * 50 + (b.avgMatchScore / 10) * 50;
-                                return fb - fa;
-                              })
-                              .map((s) => {
-                                const formPct = Math.round(
-                                  (s.attendancePct / 100) * 50 + (s.avgMatchScore / 10) * 50
-                                );
-                                return (
-                                  <div key={s.playerId} className="space-y-1">
-                                    <div className="flex justify-between items-center text-sm">
-                                      <span className="text-foreground font-medium">{s.playerName}</span>
-                                      <span className="text-violet-400 tabular-nums">
-                                        {formPct}% (účast {s.attendancePct}%, zápas {s.avgMatchScore}/10)
-                                      </span>
-                                    </div>
-                                    <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
-                                      <div
-                                        className="h-full bg-violet-500/80 rounded-full transition-all"
-                                        style={{ width: `${Math.min(100, formPct)}%` }}
-                                      />
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-            </div>
+                        </SortableOverviewCard>
+                      );
+                    })}
+              </Reorder.Group>
+            )}
           </div>
         )}
 
@@ -1339,7 +1726,7 @@ function HodnoceniHracuContent() {
                     setPlayersListExpanded(true);
                     setTimeout(() => newPlayerInputRef.current?.focus(), 50);
                   }}
-                  className="shrink-0 px-3 py-1.5 text-sm rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-medium"
+                  className="shrink-0 px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
                 >
                   Přidat hráče
                 </button>
@@ -1377,7 +1764,7 @@ function HodnoceniHracuContent() {
                   className="flex-1 px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
                   required
                 />
-                <button type="submit" disabled={addingPlayer} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white font-medium disabled:opacity-50">
+                <button type="submit" disabled={addingPlayer} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium disabled:opacity-50">
                   {addingPlayer ? '...' : 'Přidat'}
                 </button>
               </form>
@@ -1387,7 +1774,7 @@ function HodnoceniHracuContent() {
                     <span className="text-foreground flex items-center gap-2">
                       {p.name}
                       {coachPlayerId === p.id && (
-                        <span className="text-violet-400 text-xs font-medium">(trenér)</span>
+                        <span className="text-blue-400 text-xs font-medium">(trenér)</span>
                       )}
                     </span>
                     <button
@@ -1416,7 +1803,7 @@ function HodnoceniHracuContent() {
                         onClick={() => setMatchesSeason(s)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                           selectedSeason === s
-                            ? 'bg-violet-500/50 text-foreground border border-violet-400/50'
+                            ? 'bg-blue-500/50 text-foreground border border-blue-400/50'
                             : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
                         }`}
                       >
@@ -1449,7 +1836,7 @@ function HodnoceniHracuContent() {
                   placeholder="Soupeř (volitelně)"
                   className="flex-1 min-w-0 px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
                 />
-                <button type="submit" disabled={addingMatch} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white font-medium disabled:opacity-50">
+                <button type="submit" disabled={addingMatch} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium disabled:opacity-50">
                   {addingMatch ? '...' : 'Přidat zápas'}
                 </button>
               </form>
@@ -1477,12 +1864,12 @@ function HodnoceniHracuContent() {
                           {formatEventDateTime(m.date, m.startTime)}
                           {m.opponent && ` vs ${m.opponent}`}
                           {(m.goalsFor != null && m.goalsAgainst != null) && (
-                            <span className="text-violet-400 font-semibold ml-2">
+                            <span className="text-blue-400 font-semibold ml-2">
                               ({teamName || 'Náš tým'} {m.goalsFor} : {m.goalsAgainst} {m.opponent || 'Soupeř'})
                             </span>
                           )}
                           {(!m.goalsFor && !m.goalsAgainst) && m.result && (
-                            <span className="text-violet-400 font-semibold ml-2">({m.result})</span>
+                            <span className="text-blue-400 font-semibold ml-2">({m.result})</span>
                           )}
                         </span>
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -1545,7 +1932,7 @@ function HodnoceniHracuContent() {
                             type="button"
                             onClick={() => saveMatchScorers(m.id)}
                             disabled={matchScorersSaving === m.id}
-                            className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
                           >
                             {matchScorersSaving === m.id ? 'Ukládám...' : 'Uložit'}
                           </button>
@@ -1567,8 +1954,8 @@ function HodnoceniHracuContent() {
             </p>
             {voteSubmittedSuccess && (
               <div className="p-4 rounded-xl bg-accent/20 border border-accent/50 mb-4 flex items-center gap-2">
-                <span className="text-accent-dark text-xl">✓</span>
-                <p className="text-accent-light font-medium">Hodnocení bylo odesláno.</p>
+                <span className="text-[#1f3768] dark:text-accent-dark text-xl">✓</span>
+                <p className="text-[#1f3768] dark:text-accent-light font-medium">Hodnocení bylo odesláno.</p>
               </div>
             )}
             <form onSubmit={submitVote} className="space-y-4">
@@ -1652,12 +2039,12 @@ function HodnoceniHracuContent() {
                             <span className="text-foreground font-medium">
                               {p.name}
                               {coachPlayerId === p.id && (
-                                <span className="text-violet-400 text-xs font-medium ml-1">(trenér)</span>
+                                <span className="text-blue-400 text-xs font-medium ml-1">(trenér)</span>
                               )}
                             </span>
                             <span className="flex items-center gap-2">
                               <span className="text-2xl" aria-hidden title={RATING_LABELS[val] ?? ''}>{RATING_EMOJI[val]}</span>
-                              <span className="text-violet-400 font-semibold tabular-nums">{val === 0 ? '0 (nehrál)' : `${val}/10`}</span>
+                              <span className="text-blue-400 font-semibold tabular-nums">{val === 0 ? '0 (nehrál)' : `${val}/10`}</span>
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -1674,9 +2061,9 @@ function HodnoceniHracuContent() {
                                   [p.id]: Number(e.target.value),
                                 }))
                               }
-                              className="flex-1 h-3 rounded-full bg-surface-hover"
+                              className="flex-1 h-2 rounded-full appearance-none rating-range-modern"
                               style={{
-                                background: `linear-gradient(90deg, #22c55e 0%, #22c55e ${val * 10}%, rgba(255,255,255,0.14) ${val * 10}%, rgba(255,255,255,0.14) 100%)`,
+                                background: `linear-gradient(90deg, #7cff5b 0%, #39ff14 ${val * 10}%, rgba(255,255,255,0.14) ${val * 10}%, rgba(255,255,255,0.14) 100%)`,
                               }}
                             />
                             <span className="text-lg" aria-hidden title="10 = nejlepší">🏆</span>
@@ -1691,7 +2078,7 @@ function HodnoceniHracuContent() {
                 <button
                   type="submit"
                   disabled={!canSubmit || submitting}
-                  className="w-full py-3 bg-violet-500 hover:bg-violet-600 rounded-xl text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-blue-500 hover:bg-blue-600 rounded-xl text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {submitting && <LoadingSpinner size="sm" />}
                   <span>{submitting ? 'Odesílám...' : 'Odeslat hodnocení'}</span>
@@ -1776,7 +2163,7 @@ function HodnoceniHracuContent() {
                         )}
                       </span>
                       <div className="text-right">
-                        <span className="text-violet-400 font-semibold">{entry.avgScore} / 10</span>
+                        <span className="text-[#1f3768] dark:text-accent font-semibold">{entry.avgScore} / 10</span>
                         <span className="text-foreground/50 text-sm ml-2">({entry.voteCount} hlasů)</span>
                         <span className="text-foreground/40 ml-1">›</span>
                       </div>
@@ -1834,9 +2221,9 @@ function HodnoceniHracuContent() {
                       <tr key={entry.playerId} className="border-b border-border">
                         <td className="py-2 pr-4 text-foreground/60">{i + 1}</td>
                         <td className="py-2 pr-4 text-foreground font-medium">{entry.playerName}</td>
-                        <td className="py-2 pr-4 text-center text-violet-400">{entry.goals}</td>
+                        <td className="py-2 pr-4 text-center text-[#1f3768] dark:text-accent">{entry.goals}</td>
                         <td className="py-2 pr-4 text-center text-amber-400">{entry.assists}</td>
-                        <td className="py-2 text-center text-violet-300 font-semibold">{entry.total}</td>
+                        <td className="py-2 text-center text-[#1f3768] dark:text-accent-light font-semibold">{entry.total}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1912,7 +2299,7 @@ function HodnoceniHracuContent() {
                     className="w-full px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
                   />
                 </div>
-                <button type="submit" disabled={addingEvent} className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white font-medium disabled:opacity-50 w-fit">
+                <button type="submit" disabled={addingEvent} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium disabled:opacity-50 w-fit">
                   {addingEvent ? '...' : 'Přidat událost'}
                 </button>
               </form>
@@ -1936,7 +2323,7 @@ function HodnoceniHracuContent() {
                           alert('Kopírování se nepovedlo');
                         }
                       }}
-                      className="px-4 py-2 bg-violet-600 hover:bg-violet-700 rounded-lg text-white text-sm font-medium"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm font-medium"
                     >
                       Kopírovat
                     </button>
@@ -2000,7 +2387,7 @@ function HodnoceniHracuContent() {
                           <button
                             type="button"
                             onClick={() => openUcastModal(ev)}
-                            className="text-violet-400 hover:text-violet-300 text-sm px-2 py-1"
+                            className="text-blue-400 hover:text-blue-300 text-sm px-2 py-1"
                             title="Odkaz pro hráče + přehled, kdo se hlásí (do půlnoci před událostí)"
                           >
                             Účast
@@ -2008,7 +2395,7 @@ function HodnoceniHracuContent() {
                           <button
                             type="button"
                             onClick={() => openDochazkaModal(ev)}
-                            className="text-accent hover:text-accent-light text-sm px-2 py-1 font-medium"
+                            className="text-[#1f3768] hover:text-[#13244a] dark:text-accent dark:hover:text-accent-light text-sm px-2 py-1 font-medium"
                             title="Po události: finálně zaznamenat, kdo přišel"
                           >
                             Docházka
@@ -2106,15 +2493,15 @@ function HodnoceniHracuContent() {
                         </div>
                         <div className="space-y-1">
                           <div className="flex gap-2 items-center">
-                            <span className="text-accent/90 text-xs w-12">Účast</span>
+                            <span className="text-[#1f3768]/90 dark:text-accent/90 text-xs w-12">Účast</span>
                             <div className="flex-1 h-4 rounded-full bg-surface-hover overflow-hidden">
-                              <div className="h-full bg-accent/70 rounded-full" style={{ width: `${s.attendancePct}%` }} />
+                              <div className="h-full bg-gradient-to-r from-blue-500 to-emerald-400 rounded-full" style={{ width: `${s.attendancePct}%` }} />
                             </div>
                           </div>
                           <div className="flex gap-2 items-center">
-                            <span className="text-violet-400/80 text-xs w-12">Zápas</span>
+                            <span className="text-blue-400/80 text-xs w-12">Zápas</span>
                             <div className="flex-1 h-4 rounded-full bg-surface-hover overflow-hidden">
-                              <div className="h-full bg-violet-500/70 rounded-full" style={{ width: `${(s.avgMatchScore / 10) * 100}%` }} />
+                              <div className="h-full bg-gradient-to-r from-emerald-400 to-blue-500 rounded-full" style={{ width: `${(s.avgMatchScore / 10) * 100}%` }} />
                             </div>
                           </div>
                         </div>
@@ -2169,7 +2556,7 @@ function HodnoceniHracuContent() {
                         const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/udalost/${ucastModal!.shareToken}`;
                         navigator.clipboard.writeText(url).then(() => alert('Odkaz zkopírován'), () => alert('Kopírování se nepovedlo'));
                       }}
-                      className="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium shrink-0"
+                      className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium shrink-0"
                     >
                       Kopírovat
                     </button>
@@ -2182,7 +2569,7 @@ function HodnoceniHracuContent() {
                 <p className="text-amber-400 text-sm mb-4">Odpovědi se uzavírají den před událostí do půlnoci. Účast již nelze měnit.</p>
               )}
               {ucastModalFinalized && (
-                <p className="text-accent/90 text-sm mb-4">Docházka byla odeslána. Níže finální přehled zúčastněných.</p>
+                <p className="text-[#1f3768]/90 dark:text-accent/90 text-sm mb-4">Docházka byla odeslána. Níže finální přehled zúčastněných.</p>
               )}
               <div className="space-y-2 max-h-48 overflow-y-auto mb-4">
                 {players.map((p) => {
@@ -2191,7 +2578,7 @@ function HodnoceniHracuContent() {
                   const attended = a?.attended ?? false;
                   const reason = a?.absenceReason;
                   const status = !responded ? '?' : attended ? '✓' : '✗';
-                  const statusClass = !responded ? 'text-foreground/50' : attended ? 'text-accent' : 'text-amber-400';
+                  const statusClass = !responded ? 'text-foreground/50' : attended ? 'text-[#1f3768] dark:text-accent' : 'text-amber-400';
                   const label = ucastModalFinalized
                     ? (attended ? 'Přišel' : 'Nepřišel')
                     : !responded
@@ -2253,7 +2640,7 @@ function HodnoceniHracuContent() {
                           checked={attended}
                           onChange={() => !attendanceModalClosed && toggleAttendance(p.id)}
                           disabled={attendanceModalClosed}
-                          className="w-5 h-5 rounded accent-violet-500 disabled:opacity-70"
+                          className="w-5 h-5 rounded accent-blue-500 disabled:opacity-70"
                         />
                         <span className="text-foreground">{p.name}</span>
                       </label>
@@ -2269,7 +2656,7 @@ function HodnoceniHracuContent() {
                   Zavřít
                 </button>
                 {!attendanceModalClosed && (
-                  <button type="button" onClick={saveAttendance} disabled={attendanceSaving} className="flex-1 px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium disabled:opacity-50">
+                  <button type="button" onClick={saveAttendance} disabled={attendanceSaving} className="flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50">
                     {attendanceSaving ? 'Odesílám...' : 'Odeslat docházku'}
                   </button>
                 )}
@@ -2326,23 +2713,23 @@ function PlayerCardModal({
         <div className="grid grid-cols-2 gap-3 text-center">
           <div className="py-3 px-4 rounded-xl bg-surface border border-border">
             <p className="text-foreground/50 text-xs uppercase tracking-wider mb-1">Hodnocení</p>
-            <p className="text-violet-400 font-bold text-xl">{entry.avgScore} / 10</p>
+            <p className="text-[#1f3768] dark:text-accent font-bold text-xl">{entry.avgScore} / 10</p>
             <p className="text-foreground/40 text-xs">({entry.voteCount} hlasů)</p>
           </div>
           <div className="py-3 px-4 rounded-xl bg-surface border border-border">
             <p className="text-foreground/50 text-xs uppercase tracking-wider mb-1">Docházka</p>
-            <p className="text-accent font-bold text-xl">{attendance ? Math.round(attendance.attendancePct) : 0} %</p>
+            <p className="text-[#1f3768] dark:text-accent font-bold text-xl">{attendance ? Math.round(attendance.attendancePct) : 0} %</p>
             <p className="text-foreground/40 text-xs">
               {attendance ? `${attendance.matchCount} zápasů, ${attendance.trainingCount} tréninků` : '–'}
             </p>
           </div>
           <div className="py-3 px-4 rounded-xl bg-surface border border-border">
             <p className="text-foreground/50 text-xs uppercase tracking-wider mb-1">Góly</p>
-            <p className="text-accent font-bold text-xl">{canadian?.goals ?? 0}</p>
+            <p className="text-[#1f3768] dark:text-accent font-bold text-xl">{canadian?.goals ?? 0}</p>
           </div>
           <div className="py-3 px-4 rounded-xl bg-surface border border-border">
             <p className="text-foreground/50 text-xs uppercase tracking-wider mb-1">Asistence</p>
-            <p className="text-accent font-bold text-xl">{canadian?.assists ?? 0}</p>
+            <p className="text-[#1f3768] dark:text-accent font-bold text-xl">{canadian?.assists ?? 0}</p>
           </div>
         </div>
 

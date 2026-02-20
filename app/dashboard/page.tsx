@@ -31,6 +31,11 @@ export default function DashboardPage() {
   const [settingsLogoFile, setSettingsLogoFile] = useState<File | null>(null);
   const [settingsLogoPreview, setSettingsLogoPreview] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [jerseyLeadOpen, setJerseyLeadOpen] = useState(false);
+  const [leadName, setLeadName] = useState('');
+  const [leadPhone, setLeadPhone] = useState('');
+  const [leadEmail, setLeadEmail] = useState('');
+  const [leadSubmitted, setLeadSubmitted] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -132,6 +137,18 @@ export default function DashboardPage() {
     }
   };
 
+  const submitJerseyLead = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!leadName.trim() || !leadPhone.trim() || !leadEmail.trim()) {
+      alert('Vyplňte prosím jméno, telefon a e-mail.');
+      return;
+    }
+    setLeadSubmitted(true);
+    setLeadName('');
+    setLeadPhone('');
+    setLeadEmail('');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen animated-background py-12 px-4 flex items-start justify-center">
@@ -158,7 +175,7 @@ export default function DashboardPage() {
               localStorage.removeItem('userType');
               router.push('/login/team');
             }}
-            className="w-full px-6 py-3 bg-violet-500 hover:bg-violet-600 text-white font-semibold rounded-xl transition-all duration-300"
+            className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-all duration-300"
           >
             Zpět na přihlášení
           </button>
@@ -278,7 +295,7 @@ export default function DashboardPage() {
                           setSettingsLogoFile(f || null);
                           setSettingsLogoPreview(f ? URL.createObjectURL(f) : null);
                         }}
-                        className="text-foreground/80 text-sm file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-violet-500 file:text-white file:font-medium"
+                        className="text-foreground/80 text-sm file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-500 file:text-white file:font-medium"
                       />
                       <p className="text-foreground/50 text-xs mt-1">Obrázek max. 5 MB. Aktuální logo zůstane, pokud nenahrajete nové.</p>
                     </div>
@@ -288,7 +305,7 @@ export default function DashboardPage() {
                   <button type="button" onClick={() => setSettingsOpen(false)} className="flex-1 px-4 py-3 rounded-xl bg-surface text-foreground hover:bg-surface-hover font-medium">
                     Zrušit
                   </button>
-                  <button type="submit" disabled={savingSettings} className="flex-1 px-4 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium disabled:opacity-50">
+                  <button type="submit" disabled={savingSettings} className="flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50">
                     {savingSettings ? 'Ukládám...' : 'Uložit'}
                   </button>
                 </div>
@@ -365,8 +382,61 @@ export default function DashboardPage() {
         {!team?.deadline && (
           <MotionItem delay={0.06}>
             <motion.div className="glass-card rounded-3xl shadow-2xl p-6 sm:p-8 mb-6 fade-in-up" whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-            <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-4">Dodání dresů</h2>
-            <p className="text-foreground/60 italic text-sm sm:text-base">Dodání dresů zatím nebylo nastaveno správcem</p>
+              <button
+                type="button"
+                onClick={() => setJerseyLeadOpen((prev) => !prev)}
+                className="w-full flex items-center justify-between text-left"
+                aria-expanded={jerseyLeadOpen}
+                aria-controls="jersey-lead-content"
+              >
+                <h2 className="text-xl sm:text-2xl font-bold text-foreground">Dresy za free</h2>
+                <span className="text-foreground/60 text-xl">{jerseyLeadOpen ? '−' : '+'}</span>
+              </button>
+
+              {jerseyLeadOpen && (
+                <div id="jersey-lead-content" className="mt-4 sm:mt-5 space-y-4">
+                  <p className="text-foreground/80 text-sm sm:text-base leading-relaxed">
+                    Vyplňte kontaktní údaje a následně se vám ozve náš obchodní zástupce,
+                    který vám vysvětlí, jak získat dresy za free.
+                  </p>
+
+                  {leadSubmitted && (
+                    <div className="rounded-xl px-4 py-3 bg-green-500/15 border border-green-500/35 text-green-400 text-sm">
+                      Děkujeme, údaje jsme přijali. Brzy se vám ozveme.
+                    </div>
+                  )}
+
+                  <form onSubmit={submitJerseyLead} className="space-y-3">
+                    <input
+                      type="text"
+                      value={leadName}
+                      onChange={(e) => setLeadName(e.target.value)}
+                      placeholder="Jméno"
+                      className="w-full px-4 py-3 rounded-xl glass-input text-foreground"
+                    />
+                    <input
+                      type="tel"
+                      value={leadPhone}
+                      onChange={(e) => setLeadPhone(e.target.value)}
+                      placeholder="Telefonní číslo"
+                      className="w-full px-4 py-3 rounded-xl glass-input text-foreground"
+                    />
+                    <input
+                      type="email"
+                      value={leadEmail}
+                      onChange={(e) => setLeadEmail(e.target.value)}
+                      placeholder="E-mail"
+                      className="w-full px-4 py-3 rounded-xl glass-input text-foreground"
+                    />
+                    <button
+                      type="submit"
+                      className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                    >
+                      Odeslat kontakt
+                    </button>
+                  </form>
+                </div>
+              )}
             </motion.div>
           </MotionItem>
         )}
@@ -422,7 +492,7 @@ export default function DashboardPage() {
                     }
                   }
                 }}
-                className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg transition-all duration-300 font-semibold hover:scale-105"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-300 font-semibold hover:scale-105"
                 whileHover={{ y: -1, scale: 1.02 }}
                 whileTap={{ scale: 0.97 }}
               >
@@ -445,7 +515,7 @@ export default function DashboardPage() {
                   href={team.jerseyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-violet-400 hover:text-violet-300 underline break-all"
+                  className="text-blue-400 hover:text-blue-300 underline break-all"
                 >
                   {team.jerseyUrl}
                 </a>
@@ -464,7 +534,7 @@ export default function DashboardPage() {
                   href={team.shortsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-violet-400 hover:text-violet-300 underline break-all"
+                  className="text-blue-400 hover:text-blue-300 underline break-all"
                 >
                   {team.shortsUrl}
                 </a>
@@ -483,7 +553,7 @@ export default function DashboardPage() {
                   href={team.socksUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-violet-400 hover:text-violet-300 underline break-all"
+                  className="text-blue-400 hover:text-blue-300 underline break-all"
                 >
                   {team.socksUrl}
                 </a>

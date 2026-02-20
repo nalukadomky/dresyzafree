@@ -108,3 +108,33 @@ export function GhostHodnoceni() {
     </div>
   );
 }
+
+export function GhostOverviewCards() {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 lg:gap-6">
+      <div className="glass-card rounded-2xl p-4 sm:p-6 col-span-full">
+        <GhostBlock className="h-7 w-64 rounded-lg mb-4" />
+        <GhostBlock className="h-5 w-3/4 rounded-lg mb-3" />
+        <GhostBlock className="h-6 w-1/2 rounded-lg mb-2" />
+        <GhostBlock className="h-5 w-56 rounded-lg" />
+      </div>
+
+      <div className="glass-card rounded-2xl p-4 sm:p-6">
+        <GhostBlock className="h-6 w-48 rounded-lg mb-4" />
+        <GhostBlock className="h-12 w-full rounded-xl mb-3" />
+        <GhostBlock className="h-12 w-full rounded-xl mb-3" />
+        <GhostBlock className="h-12 w-5/6 rounded-xl" />
+      </div>
+
+      <div className="glass-card rounded-2xl p-4 sm:p-6 lg:col-span-2 xl:col-span-2">
+        <GhostBlock className="h-6 w-56 rounded-lg mb-3" />
+        <GhostBlock className="h-4 w-3/4 rounded-lg mb-5" />
+        <GhostBlock className="h-3 w-full rounded-full mb-5" />
+        <GhostBlock className="h-3 w-full rounded-full mb-3" />
+        <GhostBlock className="h-3 w-11/12 rounded-full mb-3" />
+        <GhostBlock className="h-3 w-10/12 rounded-full mb-3" />
+        <GhostBlock className="h-3 w-9/12 rounded-full" />
+      </div>
+    </div>
+  );
+}

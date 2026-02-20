@@ -103,9 +103,11 @@ export default function Home() {
             transition={{ duration: 0.7 }}
             className="text-[56px] sm:text-[78px] md:text-[112px] leading-[0.95] font-semibold max-w-[1100px] tracking-[-0.04em]"
           >
-            Řiď tým chytře.
+            Zvol hráče utkání.
             <br />
-            Výkonnost měř po každém zápase.
+            Měj tréninky pod kontrolou.
+            <br />
+            Docházka tréninků.
           </motion.h1>
           <motion.div
             variants={fadeUp}

@@ -252,7 +252,7 @@ export default function TacticsBoard({ players }: { players: Player[] }) {
             type="button"
             onClick={() => setDrawMode(!drawMode)}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              drawMode ? 'bg-violet-500/50 text-white border border-violet-400/50' : 'bg-white/10 text-white/70 hover:bg-white/20 border border-white/10'
+              drawMode ? 'bg-blue-500/50 text-white border border-blue-400/50' : 'bg-white/10 text-white/70 hover:bg-white/20 border border-white/10'
             }`}
           >
             {drawMode ? '✏️ Kreslení' : 'Tužka'}

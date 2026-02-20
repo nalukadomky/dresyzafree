@@ -277,7 +277,7 @@ export default function UdalostPage() {
                   <button
                     type="submit"
                     disabled={!canSubmit || submitting}
-                    className="w-full px-6 py-3 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors"
+                    className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors"
                   >
                     {submitting ? 'Odesílám...' : 'Odeslat odpověď'}
                   </button>

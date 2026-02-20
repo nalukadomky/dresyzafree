@@ -1,6 +1,19 @@
 import { supabase } from './supabase';
 import { supabaseAdmin } from './supabase-server';
 
+export type OverviewCardId = 'lastMatch' | 'upcomingEvents' | 'teamForm';
+export type OverviewCardSize = 'small' | 'wide' | 'full';
+export interface OverviewCardLayoutItem {
+  id: OverviewCardId;
+  order: number;
+  size: OverviewCardSize;
+  visible: boolean;
+}
+export interface TeamOverviewLayout {
+  version: 1;
+  cards: OverviewCardLayoutItem[];
+}
+
 export interface Team {
   id: string;
   teamName: string;
@@ -27,6 +40,7 @@ export interface Team {
   jerseyType?: string;
   backgroundColor?: string;
   coachPlayerId?: string;
+  overviewLayout?: TeamOverviewLayout;
 }
 
 export interface Admin {
@@ -68,6 +82,7 @@ const columnMapping: Record<string, string> = {
   'jerseyType': 'jerseytype',
   'backgroundColor': 'background_color',
   'coachPlayerId': 'coach_player_id',
+  'overviewLayout': 'overview_layout',
 };
 
 const reverseColumnMapping: Record<string, string> = Object.fromEntries(
@@ -315,4 +330,3 @@ export const db = {
     },
   },
 };
-
