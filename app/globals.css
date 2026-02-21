@@ -303,6 +303,13 @@ html {
   animation: bg-flow 8s ease-in-out infinite;
 }
 
+/* Animace progress baru zleva doprava */
+@keyframes bar-grow {
+  from {
+    width: 0%;
+  }
+}
+
 /* Jemný shimmer přes pozadí */
 @keyframes shimmer-sweep {
   0% {

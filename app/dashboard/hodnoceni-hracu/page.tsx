@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { GhostHodnoceni, GhostOverviewCards } from '@/components/GhostLoader';
@@ -18,6 +18,177 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { DatePicker } from '@/components/ui/datepicker';
+
+// --- Time input component (keyboard-friendly HH:MM) ---
+function TimeInput({ value, onChange, className, required }: { value: string; onChange: (v: string) => void; className?: string; required?: boolean }) {
+  const hRef = useRef<HTMLInputElement>(null);
+  const mRef = useRef<HTMLInputElement>(null);
+
+  const parts = value ? value.split(':') : ['', ''];
+  const hh = parts[0] || '';
+  const mm = parts[1] || '';
+
+  const update = (h: string, m: string) => {
+    if (h && m) onChange(`${h.padStart(2, '0')}:${m.padStart(2, '0')}`);
+    else if (!h && !m) onChange('');
+    else onChange(`${h || ''}:${m || ''}`);
+  };
+
+  const handleHourChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let v = e.target.value.replace(/\D/g, '');
+    if (v.length > 2) v = v.slice(0, 2);
+    const n = parseInt(v, 10);
+    if (v.length > 0 && n > 23) v = '23';
+    update(v, mm);
+    if (v.length === 2) mRef.current?.focus();
+  };
+
+  const handleMinuteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let v = e.target.value.replace(/\D/g, '');
+    if (v.length > 2) v = v.slice(0, 2);
+    const n = parseInt(v, 10);
+    if (v.length > 0 && n > 59) v = '59';
+    update(hh, v);
+  };
+
+  const handleMinuteKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !mm) {
+      e.preventDefault();
+      hRef.current?.focus();
+    }
+  };
+
+  return (
+    <div className={`inline-flex items-center gap-0 rounded-lg glass-input h-10 px-3 ${className || ''}`}>
+      <svg className="w-4 h-4 text-white/50 mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <input
+        ref={hRef}
+        type="text"
+        inputMode="numeric"
+        maxLength={2}
+        value={hh}
+        onChange={handleHourChange}
+        placeholder="HH"
+        className="w-7 bg-transparent text-foreground text-sm text-center outline-none placeholder:text-white/30"
+        required={required}
+      />
+      <span className="text-foreground/50 text-sm">:</span>
+      <input
+        ref={mRef}
+        type="text"
+        inputMode="numeric"
+        maxLength={2}
+        value={mm}
+        onChange={handleMinuteChange}
+        onKeyDown={handleMinuteKeyDown}
+        placeholder="MM"
+        className="w-7 bg-transparent text-foreground text-sm text-center outline-none placeholder:text-white/30"
+        required={required}
+      />
+    </div>
+  );
+}
+
+// --- Smooth-snap slider component ---
+function SmoothSnapSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [rawValue, setRawValue] = useState(value);
+  const [animating, setAnimating] = useState(false);
+
+  // Sync external value
+  useEffect(() => {
+    if (!dragging) setRawValue(value);
+  }, [value, dragging]);
+
+  const getValueFromEvent = useCallback((clientX: number) => {
+    const track = trackRef.current;
+    if (!track) return 0;
+    const rect = track.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return pct * 10;
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    setDragging(true);
+    setAnimating(false);
+    const v = getValueFromEvent(e.clientX);
+    setRawValue(v);
+  }, [getValueFromEvent]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging) return;
+    const v = getValueFromEvent(e.clientX);
+    setRawValue(v);
+  }, [dragging, getValueFromEvent]);
+
+  const handlePointerUp = useCallback(() => {
+    if (!dragging) return;
+    setDragging(false);
+    const snapped = Math.round(rawValue);
+    setAnimating(true);
+    setRawValue(snapped);
+    onChange(snapped);
+    // Reset animation flag after transition
+    setTimeout(() => setAnimating(false), 200);
+  }, [dragging, rawValue, onChange]);
+
+  const pct = (rawValue / 10) * 100;
+  const displayVal = dragging ? rawValue : value;
+  const displayPct = (displayVal / 10) * 100;
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-white/40 w-3 text-center shrink-0">0</span>
+      <div
+        ref={trackRef}
+        className="flex-1 relative h-8 flex items-center cursor-pointer touch-none select-none"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        {/* Track background */}
+        <div className="absolute inset-x-0 h-2 rounded-full bg-white/[0.08]" />
+        {/* Filled track */}
+        <div
+          className={`absolute left-0 h-2 rounded-full ${animating ? 'transition-[width] duration-200 ease-out' : ''}`}
+          style={{
+            width: `${pct}%`,
+            background: 'linear-gradient(90deg, #7cff5b, #39ff14)',
+          }}
+        />
+        {/* Snap dots */}
+        {Array.from({ length: 11 }, (_, i) => (
+          <div
+            key={i}
+            className="absolute w-1 h-1 rounded-full bg-white/20 -translate-x-1/2"
+            style={{ left: `${(i / 10) * 100}%` }}
+          />
+        ))}
+        {/* Thumb */}
+        <div
+          className={`absolute w-[22px] h-[22px] rounded-full -translate-x-1/2 ${animating ? 'transition-[left] duration-200 ease-out' : ''} ${dragging ? 'scale-110' : ''}`}
+          style={{
+            left: `${pct}%`,
+            background: '#39ff14',
+            border: '2px solid rgba(124, 255, 91, 0.95)',
+            boxShadow: dragging
+              ? '0 0 0 4px rgba(57, 255, 20, 0.25), 0 2px 16px rgba(0, 0, 0, 0.45)'
+              : '0 0 0 2px rgba(57, 255, 20, 0.2), 0 2px 14px rgba(0, 0, 0, 0.35)',
+            transition: dragging ? 'transform 0.1s, box-shadow 0.15s' : (animating ? 'left 0.2s ease-out, transform 0.15s, box-shadow 0.15s' : 'transform 0.15s, box-shadow 0.15s'),
+          }}
+        />
+      </div>
+      <span className="text-xs text-white/40 w-4 text-center shrink-0">10</span>
+    </div>
+  );
+}
 
 interface Player {
   id: string;
@@ -66,8 +237,10 @@ interface AttendanceStat {
   playerId: string;
   playerName: string;
   attendancePct: number;
+  matchAttendancePct: number;
   avgMatchScore: number;
   trainingCount: number;
+  matchEventCount: number;
   matchCount: number;
 }
 
@@ -634,7 +807,7 @@ function HodnoceniHracuContent() {
   const [newEventNote, setNewEventNote] = useState('');
   const [addingEvent, setAddingEvent] = useState(false);
   const [attendanceStats, setAttendanceStats] = useState<AttendanceStat[]>([]);
-  const [showAllFormPlayers, setShowAllFormPlayers] = useState(false);
+  const [showAllFormPlayers, setShowAllFormPlayers] = useState(true);
   const [showPastEvents, setShowPastEvents] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(null);
   const [createdEventLink, setCreatedEventLink] = useState<string | null>(null);
@@ -1750,8 +1923,8 @@ function HodnoceniHracuContent() {
                                           </div>
                                           <div className="h-3 rounded-full bg-surface-hover overflow-hidden">
                                             <div
-                                              className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full transition-all"
-                                              style={{ width: `${Math.min(100, formScore)}%` }}
+                                              className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full"
+                                              style={{ width: `${Math.min(100, formScore)}%`, animation: 'bar-grow 0.8s ease-out' }}
                                             />
                                           </div>
                                         </div>
@@ -1787,8 +1960,8 @@ function HodnoceniHracuContent() {
                                                 </div>
                                                 <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
                                                   <div
-                                                    className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full transition-all"
-                                                    style={{ width: `${Math.min(100, formPct)}%` }}
+                                                    className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full"
+                                                    style={{ width: `${Math.min(100, formPct)}%`, animation: 'bar-grow 0.8s ease-out' }}
                                                   />
                                                 </div>
                                               </div>
@@ -1914,19 +2087,14 @@ function HodnoceniHracuContent() {
                 )}
               </div>
               <form onSubmit={addMatch} className="flex flex-col sm:flex-row gap-2 mb-4 flex-wrap">
-                <input
-                  type="date"
+                <DatePicker
                   value={newMatchDate}
-                  onChange={(e) => setNewMatchDate(e.target.value)}
-                  className="px-4 py-2 rounded-lg glass-input text-foreground min-w-0 sm:min-w-[140px]"
+                  onChange={setNewMatchDate}
                   required
                 />
-                <input
-                  type="time"
+                <TimeInput
                   value={newMatchStartTime}
-                  onChange={(e) => setNewMatchStartTime(e.target.value)}
-                  className="px-4 py-2 rounded-lg glass-input text-foreground min-w-0 sm:min-w-[100px]"
-                  title="Čas začátku"
+                  onChange={setNewMatchStartTime}
                   required
                 />
                 <input
@@ -2156,13 +2324,13 @@ function HodnoceniHracuContent() {
                   </SelectContent>
                 </Select>
               </div>
-              {hasVoted && (
+              {hasVoted === true && matchId && (
                 <div className="p-4 rounded-xl bg-amber-500/20 border border-amber-500/40">
                   <p className="text-amber-200 font-medium">Už jste pro tento zápas hlasoval.</p>
                   <p className="text-foreground/70 text-sm mt-1">Hodnocení nelze měnit.</p>
                 </div>
               )}
-              {otherPlayers.length > 0 && !hasVoted && (
+              {otherPlayers.length > 0 && voterId && matchId && hasVoted === false && (
                 <div>
                   <label className="block text-foreground font-medium mb-3">
                     Hodnocení táhlem – hodnotte fair a pozitivně (0 = nebyl nasazen, 10 = nejlepší)
@@ -2184,34 +2352,22 @@ function HodnoceniHracuContent() {
                               <span className="text-blue-400 font-semibold tabular-nums">{val === 0 ? '0 (nehrál)' : `${val}/10`}</span>
                             </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg opacity-60" aria-hidden title="0 = nebyl nasazen">—</span>
-                            <input
-                              type="range"
-                              min={0}
-                              max={10}
-                              step={1}
-                              value={val}
-                              onChange={(e) =>
-                                setScores((prev) => ({
-                                  ...prev,
-                                  [p.id]: Number(e.target.value),
-                                }))
-                              }
-                              className="flex-1 h-2 rounded-full appearance-none rating-range-modern"
-                              style={{
-                                background: `linear-gradient(90deg, #7cff5b 0%, #39ff14 ${val * 10}%, rgba(255,255,255,0.14) ${val * 10}%, rgba(255,255,255,0.14) 100%)`,
-                              }}
-                            />
-                            <span className="text-lg" aria-hidden title="10 = nejlepší">🏆</span>
-                          </div>
+                          <SmoothSnapSlider
+                            value={val}
+                            onChange={(v) =>
+                              setScores((prev) => ({
+                                ...prev,
+                                [p.id]: v,
+                              }))
+                            }
+                          />
                         </div>
                       );
                     })}
                   </div>
                 </div>
               )}
-              {!hasVoted && (
+              {voterId && matchId && hasVoted === false && (
                 <button
                   type="submit"
                   disabled={!canSubmit || submitting}
@@ -2383,24 +2539,19 @@ function HodnoceniHracuContent() {
                 Přidejte tréninky a zápasy. „Účast" = odkaz pro hráče, kteří se do půlnoci před událostí sami ohlásí, zda dorazí. „Docházka" = po události finálně zaznamenáte, kdo skutečně přišel (jednorázové odeslání, nelze měnit).
               </p>
               <form onSubmit={addEvent} className="flex flex-col gap-3 mb-6">
-                <div className="flex flex-wrap gap-2">
-                  <input
-                    type="date"
+                <div className="flex flex-wrap items-center gap-2">
+                  <DatePicker
                     value={newEventDate}
-                    onChange={(e) => setNewEventDate(e.target.value)}
-                    className="px-4 py-2 rounded-lg glass-input text-foreground"
+                    onChange={setNewEventDate}
                     required
                   />
-                  <input
-                    type="time"
+                  <TimeInput
                     value={newEventStartTime}
-                    onChange={(e) => setNewEventStartTime(e.target.value)}
-                    className="px-4 py-2 rounded-lg glass-input text-foreground"
-                    title="Čas začátku"
+                    onChange={setNewEventStartTime}
                     required
                   />
                   <Select value={newEventType} onValueChange={(value) => setNewEventType(value as EventType)}>
-                    <SelectTrigger className="w-[220px] rounded-lg glass-input text-foreground focus:ring-2 focus:ring-blue-400">
+                    <SelectTrigger className="h-10 w-[220px] rounded-lg glass-input text-foreground focus:ring-2 focus:ring-blue-400">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -2416,7 +2567,7 @@ function HodnoceniHracuContent() {
                     value={newEventLocation}
                     onChange={(e) => setNewEventLocation(e.target.value)}
                     placeholder="Místo *"
-                    className="flex-1 min-w-[140px] px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
+                    className="h-10 flex-1 min-w-[140px] px-4 rounded-lg glass-input text-foreground placeholder-white/50"
                     required
                   />
                   {newEventType !== 'training' && (
@@ -2425,7 +2576,7 @@ function HodnoceniHracuContent() {
                       value={newEventOpponent}
                       onChange={(e) => setNewEventOpponent(e.target.value)}
                       placeholder="Soupeř (volitelně)"
-                      className="flex-1 min-w-[120px] px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
+                      className="h-10 flex-1 min-w-[120px] px-4 rounded-lg glass-input text-foreground placeholder-white/50"
                     />
                   )}
                   <input
@@ -2433,7 +2584,7 @@ function HodnoceniHracuContent() {
                     value={newEventNote}
                     onChange={(e) => setNewEventNote(e.target.value)}
                     placeholder="Poznámka (volitelně)"
-                    className="w-full px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
+                    className="h-10 w-full px-4 rounded-lg glass-input text-foreground placeholder-white/50"
                   />
                 </div>
                 <button type="submit" disabled={addingEvent} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium disabled:opacity-50 w-fit">
@@ -2442,8 +2593,8 @@ function HodnoceniHracuContent() {
               </form>
               {createdEventLink && (
                 <div className="mb-6 p-4 rounded-xl bg-accent/20 border border-accent/40">
-                  <p className="text-foreground font-medium mb-2">Odkaz pro potvrzení účasti (hráči před událostí řeknou, zda přijdou):</p>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-foreground font-medium mb-2">Odkaz pro potvrzení účasti:</p>
+                  <div className="flex items-center gap-2">
                     <input
                       type="text"
                       readOnly
@@ -2460,17 +2611,20 @@ function HodnoceniHracuContent() {
                           alert('Kopírování se nepovedlo');
                         }
                       }}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-sm font-medium"
+                      className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-foreground text-sm shrink-0 transition-colors"
+                      title="Kopírovat odkaz"
                     >
-                      Kopírovat
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
                     </button>
                     <a
                       href={createdEventLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-4 py-2 bg-surface-hover hover:bg-white/20 rounded-lg text-foreground text-sm font-medium"
+                      className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium shrink-0 transition-colors"
                     >
-                      Otevřít v novém okně
+                      Potvrdit účast
                     </a>
                   </div>
                 </div>
@@ -2610,42 +2764,54 @@ function HodnoceniHracuContent() {
 
             {attendanceStats.some((s) => s.trainingCount > 0) && (
               <div className="glass-card rounded-2xl p-4 sm:p-6">
-                <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2">Účast na tréninzích vs výkonnost na zápasech</h2>
-                <p className="text-foreground/60 text-sm mb-4">
-                  Porovnání % účasti na tréninzích s průměrným hodnocením v zápasech.
-                </p>
+                <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2">Účast a výkonnost hráčů</h2>
+                <div className="flex flex-wrap gap-4 text-xs text-foreground/60 mb-4">
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-sm bg-blue-500 inline-block" /> Účast na tréninku</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-sm bg-emerald-500 inline-block" /> Účast na zápasech</span>
+                  <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-sm bg-orange-500 inline-block" /> Průměrné hodnocení</span>
+                </div>
                 <div className="space-y-3">
                   {attendanceStats
-                    .filter((s) => s.trainingCount > 0 || s.matchCount > 0)
+                    .filter((s) => s.trainingCount > 0 || s.matchCount > 0 || s.matchEventCount > 0)
                     .sort((a, b) => b.attendancePct - a.attendancePct)
                     .map((s) => (
                       <div key={s.playerId} className="space-y-1">
                         <div className="flex justify-between text-sm mb-1">
                           <span className="text-foreground font-medium">{s.playerName}</span>
-                          <span className="text-foreground/60">
-                            účast {s.attendancePct}%
-                            {s.trainingCount > 0 ? ` (${Math.round((s.attendancePct / 100) * s.trainingCount)}/${s.trainingCount})` : ''}
-                            {' · '}zápas {s.avgMatchScore}/10
+                          <span className="text-foreground/50 text-xs">
+                            trénink {s.attendancePct}% · zápas {s.matchAttendancePct}% · hodnocení {s.avgMatchScore}/10
                           </span>
                         </div>
                         <div className="space-y-1">
                           <div className="flex gap-2 items-center">
-                            <span className="text-foreground/75 text-xs w-12">Účast</span>
-                            <div className="flex-1 h-4 rounded-full bg-surface-hover overflow-hidden">
+                            <span className="text-foreground/60 text-xs w-16 shrink-0">Trénink</span>
+                            <div className="flex-1 h-2.5 rounded-full bg-surface-hover overflow-hidden">
                               <div
-                                className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full"
+                                className="h-full bg-blue-500 rounded-full transition-all duration-500"
                                 style={{ width: `${s.attendancePct}%` }}
                               />
                             </div>
+                            <span className="text-foreground/50 text-xs w-10 text-right">{s.attendancePct}%</span>
                           </div>
                           <div className="flex gap-2 items-center">
-                            <span className="text-foreground/75 text-xs w-12">Zápas</span>
-                            <div className="flex-1 h-4 rounded-full bg-surface-hover overflow-hidden">
+                            <span className="text-foreground/60 text-xs w-16 shrink-0">Zápasy</span>
+                            <div className="flex-1 h-2.5 rounded-full bg-surface-hover overflow-hidden">
                               <div
-                                className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full opacity-90"
+                                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                                style={{ width: `${s.matchAttendancePct}%` }}
+                              />
+                            </div>
+                            <span className="text-foreground/50 text-xs w-10 text-right">{s.matchAttendancePct}%</span>
+                          </div>
+                          <div className="flex gap-2 items-center">
+                            <span className="text-foreground/60 text-xs w-16 shrink-0">Hodnocení</span>
+                            <div className="flex-1 h-2.5 rounded-full bg-surface-hover overflow-hidden">
+                              <div
+                                className="h-full bg-orange-500 rounded-full transition-all duration-500"
                                 style={{ width: `${(s.avgMatchScore / 10) * 100}%` }}
                               />
                             </div>
+                            <span className="text-foreground/50 text-xs w-10 text-right">{s.avgMatchScore}/10</span>
                           </div>
                         </div>
                       </div>
@@ -2685,7 +2851,6 @@ function HodnoceniHracuContent() {
               )}
               {ucastModal.shareToken ? (
                 <>
-                  <p className="text-foreground/80 text-sm mb-2">Odkaz pro hráče (ohlásí se do půlnoci před událostí):</p>
                   <div className="flex gap-2 mb-4">
                     <input
                       type="text"
@@ -2699,10 +2864,23 @@ function HodnoceniHracuContent() {
                         const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/udalost/${ucastModal!.shareToken}`;
                         navigator.clipboard.writeText(url).then(() => alert('Odkaz zkopírován'), () => alert('Kopírování se nepovedlo'));
                       }}
-                      className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium shrink-0"
+                      className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-foreground text-sm shrink-0 transition-colors"
+                      title="Kopírovat odkaz"
                     >
-                      Kopírovat
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
                     </button>
+                    {!isUcastClosed(ucastModal.date) && !ucastModalFinalized && (
+                      <a
+                        href={`${typeof window !== 'undefined' ? window.location.origin : ''}/udalost/${ucastModal.shareToken}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium shrink-0 transition-colors"
+                      >
+                        Potvrdit účast
+                      </a>
+                    )}
                   </div>
                   {(() => {
                     const confirmed = ucastModalData.filter((x) => x.responded && x.attended);
@@ -2727,92 +2905,6 @@ function HodnoceniHracuContent() {
                       </div>
                     );
                   })()}
-                  {!isUcastClosed(ucastModal.date) && !ucastModalFinalized && (
-                    <div className="mb-4 rounded-lg bg-surface p-3 border border-border space-y-3">
-                      <p className="text-sm font-medium text-foreground">Potvrdit účast rovnou</p>
-                      <div>
-                        <label className="block text-foreground/80 text-xs mb-1">Vyberte své jméno</label>
-                        <Select
-                          value={quickPlayerId || '__none__'}
-                          onValueChange={(value) => {
-                            setQuickPlayerId(value === '__none__' ? '' : value);
-                            setQuickError(null);
-                            setQuickSuccess(null);
-                          }}
-                        >
-                          <SelectTrigger className="w-full rounded-lg glass-input text-foreground focus:ring-2 focus:ring-blue-400">
-                            <SelectValue placeholder="— Vyberte —" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="__none__">— Vyberte —</SelectItem>
-                            {players.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <label className="block text-foreground/80 text-xs mb-1">Budu se účastnit</label>
-                        <div className="flex gap-4">
-                          <label className="flex items-center gap-2 text-sm text-foreground">
-                            <input
-                              type="radio"
-                              name="quick-attending"
-                              checked={quickAttending === true}
-                              onChange={() => {
-                                setQuickAttending(true);
-                                setQuickError(null);
-                                setQuickSuccess(null);
-                              }}
-                              className="w-4 h-4"
-                            />
-                            Ano
-                          </label>
-                          <label className="flex items-center gap-2 text-sm text-foreground">
-                            <input
-                              type="radio"
-                              name="quick-attending"
-                              checked={quickAttending === false}
-                              onChange={() => {
-                                setQuickAttending(false);
-                                setQuickError(null);
-                                setQuickSuccess(null);
-                              }}
-                              className="w-4 h-4"
-                            />
-                            Ne
-                          </label>
-                        </div>
-                      </div>
-                      {quickAttending === false && (
-                        <div>
-                          <label className="block text-foreground/80 text-xs mb-1">Důvod nepřítomnosti</label>
-                          <textarea
-                            value={quickAbsenceReason}
-                            onChange={(e) => {
-                              setQuickAbsenceReason(e.target.value);
-                              setQuickError(null);
-                              setQuickSuccess(null);
-                            }}
-                            placeholder="Např. nemoc, práce, dovolená..."
-                            className="w-full min-h-[88px] px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/40 resize-y"
-                          />
-                        </div>
-                      )}
-                      {quickError && <p className="text-sm text-red-300">{quickError}</p>}
-                      {quickSuccess && <p className="text-sm text-[#1f3768] dark:text-accent">{quickSuccess}</p>}
-                      <button
-                        type="button"
-                        onClick={submitQuickAttendance}
-                        disabled={quickSubmitting}
-                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium"
-                      >
-                        {quickSubmitting ? 'Odesílám...' : 'Potvrdit účast'}
-                      </button>
-                    </div>
-                  )}
                 </>
               ) : (
                 <p className="text-amber-400/90 text-sm mb-4">Událost nemá odkaz. Nejprve uložte událost s odkazem pro účast.</p>
@@ -2839,11 +2931,16 @@ function HodnoceniHracuContent() {
                         ? 'Budu'
                         : `Nebudu${reason ? `: ${reason}` : ''}`;
                   return (
-                    <div key={p.id} className="py-2 px-3 rounded-lg bg-surface flex justify-between items-center">
-                      <span className="text-foreground">{p.name}</span>
-                      <span className={`${statusClass} font-medium`} title={label}>
+                    <div key={p.id} className="py-2 px-3 rounded-lg bg-surface flex justify-between items-center gap-3 group relative">
+                      <span className="text-foreground shrink-0">{p.name}</span>
+                      <span className={`${statusClass} font-medium text-sm truncate max-w-[180px]`} title={label}>
                         {status} {label}
                       </span>
+                      {reason && (
+                        <div className="absolute right-0 top-full mt-1 z-30 hidden group-hover:block px-3 py-2 rounded-lg bg-[#1a1a2e] border border-white/20 shadow-xl text-sm text-foreground max-w-[280px] whitespace-normal">
+                          {label}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

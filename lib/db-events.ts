@@ -272,7 +272,7 @@ export const dbEvents = {
   getAttendanceVsPerformance: async (
     teamId: string
   ): Promise<
-    { playerId: string; playerName: string; attendancePct: number; avgMatchScore: number; trainingCount: number; matchCount: number }[]
+    { playerId: string; playerName: string; attendancePct: number; matchAttendancePct: number; avgMatchScore: number; trainingCount: number; matchEventCount: number; matchCount: number }[]
   > => {
     const [eventsRes, playersRes, attendanceRes, matchesRes] = await Promise.all([
       client!.from('events').select('id, event_type').eq('team_id', teamId),
@@ -292,12 +292,18 @@ export const dbEvents = {
       trainingEventIds.has(a.event_id)
     );
 
+    const matchEvents = events.filter((e) => e.event_type === 'match');
+    const matchEventIds = new Set(matchEvents.map((e) => e.id));
+    const matchEventAttendance = attendanceData.filter((a) =>
+      matchEventIds.has(a.event_id)
+    );
+
     const byPlayer: Record<
       string,
-      { trainingAttended: number; trainingTotal: number; matchScores: number[] }
+      { trainingAttended: number; trainingTotal: number; matchEventAttended: number; matchEventTotal: number; matchScores: number[] }
     > = {};
     for (const p of players) {
-      byPlayer[p.id] = { trainingAttended: 0, trainingTotal: 0, matchScores: [] };
+      byPlayer[p.id] = { trainingAttended: 0, trainingTotal: 0, matchEventAttended: 0, matchEventTotal: 0, matchScores: [] };
     }
 
     for (const t of trainingEvents) {
@@ -309,6 +315,18 @@ export const dbEvents = {
       for (const p of players) {
         byPlayer[p.id].trainingTotal += 1;
         if (attendedPlayers.has(p.id)) byPlayer[p.id].trainingAttended += 1;
+      }
+    }
+
+    for (const m of matchEvents) {
+      const attendedPlayers = new Set(
+        matchEventAttendance
+          .filter((a) => a.event_id === m.id && (a as { attended: boolean }).attended !== false)
+          .map((a) => a.player_id)
+      );
+      for (const p of players) {
+        byPlayer[p.id].matchEventTotal += 1;
+        if (attendedPlayers.has(p.id)) byPlayer[p.id].matchEventAttended += 1;
       }
     }
 
@@ -330,6 +348,8 @@ export const dbEvents = {
       const d = byPlayer[p.id];
       const attendancePct =
         d.trainingTotal > 0 ? Math.round((d.trainingAttended / d.trainingTotal) * 100) : 0;
+      const matchAttendancePct =
+        d.matchEventTotal > 0 ? Math.round((d.matchEventAttended / d.matchEventTotal) * 100) : 0;
       const avgMatchScore =
         d.matchScores.length > 0
           ? Math.round((d.matchScores.reduce((a, b) => a + b, 0) / d.matchScores.length) * 10) / 10
@@ -338,8 +358,10 @@ export const dbEvents = {
         playerId: p.id,
         playerName: p.name,
         attendancePct,
+        matchAttendancePct,
         avgMatchScore,
         trainingCount: d.trainingTotal,
+        matchEventCount: d.matchEventTotal,
         matchCount: d.matchScores.length,
       };
     });
