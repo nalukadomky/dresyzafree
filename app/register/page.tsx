@@ -309,9 +309,14 @@ export default function RegisterPage() {
       </motion.div>
 
       <MotionPage className="max-w-2xl w-full glass-card rounded-2xl p-8 md:p-12 relative z-10">
-        <h1 className="text-2xl md:text-3xl font-semibold text-foreground text-center mb-8 tracking-tight">
-          Registrace týmu
-        </h1>
+        <div className="text-center mb-8">
+          <Link href="/" className="inline-block mb-4 text-2xl font-bold tracking-tight">
+            My<span className="text-white">Pitch</span>
+          </Link>
+          <h1 className="text-2xl md:text-3xl font-semibold text-foreground tracking-tight">
+            Registrujte svůj tým na MyPitch
+          </h1>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Název týmu */}
@@ -349,10 +354,10 @@ export default function RegisterPage() {
                       key={index}
                       type="button"
                       onClick={() => handleSuggestionClick(club)}
-                      className="w-full text-left px-4 py-3 hover:bg-blue-600/20 dark:hover:bg-blue-600/30 transition-colors text-foreground dark:text-white first:rounded-t-xl last:rounded-b-xl border-b border-border last:border-b-0"
+                      className="w-full text-left px-4 py-3 hover:bg-blue-500/15 transition-colors text-foreground dark:text-white first:rounded-t-xl last:rounded-b-xl border-b border-border last:border-b-0"
                     >
                       <div className="flex items-center space-x-2">
-                        <svg className="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
@@ -508,7 +513,7 @@ export default function RegisterPage() {
                     }}
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                       formData.leagues.includes(league)
-                        ? 'bg-blue-500/30 text-white border border-blue-400/50'
+                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
                         : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
                     }`}
                   >
@@ -780,7 +785,7 @@ export default function RegisterPage() {
           <motion.button
             type="submit"
             disabled={loading}
-            className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold text-lg rounded-2xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden flex items-center justify-center space-x-2"
+            className="w-full py-4 bg-accent hover:bg-accent-light text-black font-semibold text-lg rounded-2xl shadow-lg shadow-accent/25 hover:shadow-accent/40 transition-all duration-300 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 modern-button relative overflow-hidden flex items-center justify-center space-x-2"
             whileHover={loading ? undefined : { y: -1.5, scale: 1.01 }}
             whileTap={loading ? undefined : { scale: 0.98 }}
           >

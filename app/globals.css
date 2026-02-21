@@ -745,3 +745,17 @@ html {
     transform: translate(-2px, -2px);
   }
 }
+
+/* Green glow pulse for CTA buttons */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 30px rgba(134, 239, 66, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 50px rgba(134, 239, 66, 0.45);
+  }
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 2.5s ease-in-out infinite;
+}

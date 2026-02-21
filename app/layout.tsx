@@ -3,8 +3,8 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 
 export const metadata: Metadata = {
-  title: "Dresy za free | Správa týmu, docházky a výkonu hráčů",
-  description: "Platforma pro kluby: registrace týmu, události, docházka, hodnocení hráčů, leaderboard a kanadské bodování.",
+  title: "MyPitch | Platforma pro správu amatérských týmů",
+  description: "Hodnocení hráčů, žebříček, docházka, kalendář událostí a taktická tabule. Zdarma pro celý tým.",
 };
 
 export default function RootLayout({

@@ -265,7 +265,7 @@ const DEFAULT_OVERVIEW_LAYOUT: TeamOverviewLayout = {
 function tabLabel(tab: Tab): string {
   if (tab === 'dashboard') return 'Přehled';
   if (tab === 'manage') return 'Hráči a zápasy';
-  if (tab === 'vote') return 'Hlasovat';
+  if (tab === 'vote') return 'Ohodnotit';
   if (tab === 'leaderboard') return 'Žebříček';
   if (tab === 'canadian') return 'Kanadské bodování';
   if (tab === 'calendar') return 'Události/docházka';
@@ -651,41 +651,41 @@ function isMatchPlayed(date: string, startTime?: string): boolean {
   return !Number.isNaN(matchDateTime.getTime()) && matchDateTime.getTime() <= Date.now();
 }
 
-/** Pozitivní, motivující emojis – žádné toxické negativní symboly. Nižší skóre = prostor k růstu. */
+/** Humorné emoji – motivační, s nadsázkou. */
 const RATING_EMOJI: Record<number, string> = {
-  0: '—',
-  1: '🌱',  // potenciál
-  2: '📈',  // zlepšení
-  3: '👍',  // solidní
-  4: '🙂',  // dobré
-  5: '😊',  // pěkná práce
-  6: '💪',  // silný výkon
-  7: '⭐',  // vynikající
-  8: '🔥',  // skvělé
-  9: '🚀',  // mimořádné
-  10: '🏆', // nejlepší
+  0: '🪑',  // zůstal na lavičce
+  1: '😬',  // no...
+  2: '🥴',  // slabší den
+  3: '😅',  // aspoň se zpotil
+  4: '🙂',  // průměr
+  5: '👍',  // solidní řemeslo
+  6: '💪',  // začíná jiskřit
+  7: '🔥',  // takovej výkon chceš každej víkend
+  8: '⭐',  // soupeř plakal
+  9: '🚀',  // jinej level
+  10: '👑', // zavolejte agenta
 };
 
-/** Konstruktivní popisky pro tooltip – podporují týmovou atmosféru. */
+/** Humorné popisky – s nadsázkou a týmovým duchem. */
 const RATING_LABELS: Record<number, string> = {
-  0: 'Nebyl nasazen',
-  1: 'Má potenciál',
-  2: 'Na dobré cestě',
-  3: 'Solidní výkon',
-  4: 'Dobře přispěl',
-  5: 'Pěkná práce',
-  6: 'Silný výkon',
-  7: 'Vynikající',
-  8: 'Skvělé',
-  9: 'Mimořádné',
-  10: 'Nejlepší',
+  0: 'Zůstal v šatně',
+  1: 'Dnes to chytlo jiný kopačky',
+  2: 'Hrál, ale tráva víc',
+  3: 'Aspoň se zpotil',
+  4: 'Průměrnej den v kanclu',
+  5: 'Solidní řemeslo',
+  6: 'Začíná to jiskřit!',
+  7: 'Takovej výkon chceš každej víkend',
+  8: 'Soupeř ho chtěl vyměnit k sobě',
+  9: 'Dnes to byl jinej level',
+  10: 'Zavolejte mu agenta!',
 };
 
 type BadgeId = 'střelec' | 'dříč' | 'král_asistencí';
 
 const BADGES: { id: BadgeId; label: string; icon: string; title: string }[] = [
-  { id: 'střelec', label: 'Střelec', icon: '⚽', title: 'Nejvíce gólů' },
-  { id: 'dříč', label: 'Dříč', icon: '💪', title: 'Nejlepší docházka na tréninky' },
+  { id: 'střelec', label: 'Střelec', icon: '⚽', title: 'Nejvíce gólů v týmu' },
+  { id: 'dříč', label: 'Dříč', icon: '💪', title: 'Nejlepší docházka' },
   { id: 'král_asistencí', label: 'Král asistencí', icon: '👑', title: 'Nejvíce asistencí' },
 ];
 
@@ -696,16 +696,16 @@ function getPlayerNicknameAndIcon(
   canadianStats: CanadianEntry[],
   _attendanceStats: AttendanceStat[]
 ): { nickname: string; icon: string } {
-  if (badges.includes('střelec')) return { nickname: 'Střelec', icon: '⚽' };
-  if (badges.includes('král_asistencí')) return { nickname: 'Král asistencí', icon: '👑' };
-  if (badges.includes('dříč')) return { nickname: 'Dříč', icon: '💪' };
+  if (badges.includes('střelec')) return { nickname: 'Kanonýr', icon: '⚽' };
+  if (badges.includes('král_asistencí')) return { nickname: 'Číšník', icon: '👑' };
+  if (badges.includes('dříč')) return { nickname: 'Železnej muž', icon: '💪' };
   const s = entry.avgScore;
-  if (s >= 9) return { nickname: 'Rychlík', icon: '🚀' };
-  if (s >= 8) return { nickname: 'Hvězda', icon: '⭐' };
-  if (s >= 7) return { nickname: 'Bojovník', icon: '💪' };
-  if (s >= 6) return { nickname: 'Solidní', icon: '👍' };
-  if (s >= 5) return { nickname: 'Spolehlivý', icon: '🙂' };
-  return { nickname: 'Týmový hráč', icon: '🤝' };
+  if (s >= 9) return { nickname: 'Zavolejte agenta', icon: '🚀' };
+  if (s >= 8) return { nickname: 'Hvězda týmu', icon: '⭐' };
+  if (s >= 7) return { nickname: 'Mašina', icon: '🔥' };
+  if (s >= 6) return { nickname: 'Jistota', icon: '👍' };
+  if (s >= 5) return { nickname: 'Pracant', icon: '🙂' };
+  return { nickname: 'Tichej zabiják', icon: '🤫' };
 }
 
 function getPlayerBadges(
@@ -769,6 +769,7 @@ function HodnoceniHracuContent() {
   const [voterId, setVoterId] = useState('');
   const [matchId, setMatchId] = useState('');
   const [scores, setScores] = useState<Record<string, number>>({});
+  const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [showVoteValidation, setShowVoteValidation] = useState(false);
   const [hasVoted, setHasVoted] = useState<boolean | null>(null);
@@ -1472,6 +1473,7 @@ function HodnoceniHracuContent() {
   }, [teamId, token, voterId, matchId]);
 
   useEffect(() => {
+    setCurrentPlayerIndex(0);
     if (otherPlayers.length === 0) {
       setScores({});
       return;
@@ -1644,15 +1646,19 @@ function HodnoceniHracuContent() {
       )}
 
       <div className="fixed top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 flex justify-between items-center z-20">
-        <Link
-          href="/dashboard"
-          className="px-3 py-2 sm:px-4 sm:py-2.5 glass-card text-foreground/90 rounded-xl border border-border hover:bg-surface flex items-center gap-2 text-sm sm:text-base"
-        >
-          <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          Zpět
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard"
+            className="w-9 h-9 sm:w-10 sm:h-10 glass-card text-foreground/90 rounded-xl border border-border hover:bg-surface flex items-center justify-center"
+          >
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </Link>
+          <Link href="/" className="text-lg font-bold tracking-tight text-foreground">
+            My<span className="text-foreground">Pitch</span>
+          </Link>
+        </div>
         <ThemeToggle />
       </div>
 
@@ -2247,145 +2253,236 @@ function HodnoceniHracuContent() {
         )}
 
         {tab === 'vote' && (
-          <div className="glass-card rounded-2xl p-4 sm:p-6 max-w-2xl">
-            <h2 className="text-base sm:text-lg font-semibold text-foreground mb-4">Podle vyhodnocení ze zápasu vyhodnoť hráče utkání</h2>
-              <p className="text-foreground/60 text-sm mb-4">
-              Vyberte sebe (hlasujícího), zápas a ohodnoťte spoluhráče škálou 0–10 podle výkonu v utkání (0 = nebyl nasazen, 10 = nejlepší). Nemůžete hodnotit sám sebe. Každý hráč může hlasovat jen jednou – po odeslání nelze měnit.
-            </p>
-            {voteSubmittedSuccess && (
-              <div className="p-4 rounded-xl bg-accent/20 border border-accent/50 mb-4 flex items-center gap-2">
-                <span className="text-[#1f3768] dark:text-accent-dark text-xl">✓</span>
-                <p className="text-[#1f3768] dark:text-accent-light font-medium">Hodnocení bylo odesláno.</p>
-              </div>
-            )}
-            <form onSubmit={submitVote} className="space-y-4">
-              <div>
-                <label className="block text-foreground font-medium mb-2">Kdo hlasuje?</label>
-                <Select
-                  value={voterId || '__none__'}
-                  onValueChange={(value) => {
-                    setVoterId(value === '__none__' ? '' : value);
-                    setShowVoteValidation(false);
-                  }}
-                >
-                  <SelectTrigger className={`w-full rounded-xl glass-input text-foreground focus:ring-2 focus:ring-blue-400 ${showVoteValidation && !voterId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}>
-                    <SelectValue placeholder="Vyberte sebe" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Vyberte sebe</SelectItem>
-                    {players.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                        {coachPlayerId === p.id ? ' (trenér)' : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="block text-foreground font-medium mb-2">Za který zápas?</label>
-                <Select
-                  value={matchId || '__none__'}
-                  onValueChange={(val) => {
-                    if (val === '__add_match__') {
-                      setMatchId('');
-                      setTab('manage');
-                    } else if (val === '__none__') {
-                      setMatchId('');
-                      setShowVoteValidation(false);
-                    } else {
-                      setMatchId(val);
-                      setShowVoteValidation(false);
-                    }
-                  }}
-                >
-                  <SelectTrigger className={`w-full rounded-xl glass-input text-foreground focus:ring-2 focus:ring-blue-400 ${showVoteValidation && !matchId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}>
-                    <SelectValue placeholder="Vyberte zápas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Vyberte zápas</SelectItem>
-                    {playedMatches.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {formatEventDateTime(m.date, m.startTime)}
-                        {m.opponent ? ` vs ${m.opponent}` : ''}
-                        {(m.goalsFor != null && m.goalsAgainst != null)
-                          ? ` ${m.goalsFor}:${m.goalsAgainst}`
-                          : m.result
-                            ? ` ${m.result}`
-                            : ''}
-                      </SelectItem>
-                    ))}
-                    {playedMatches.length === 0 && (
-                      <SelectItem value="__no_played_matches__" disabled>
-                        Žádný odehraný zápas s časem
-                      </SelectItem>
-                    )}
-                    <SelectItem value="__add_match__">➕ Přidat zápas</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {hasVoted === true && matchId && (
-                <div className="p-4 rounded-xl bg-amber-500/20 border border-amber-500/40">
-                  <p className="text-amber-200 font-medium">Už jste pro tento zápas hlasoval.</p>
-                  <p className="text-foreground/70 text-sm mt-1">Hodnocení nelze měnit.</p>
-                </div>
-              )}
-              {otherPlayers.length > 0 && voterId && matchId && hasVoted === false && (
+          <form onSubmit={submitVote}>
+            <div className="flex flex-col lg:flex-row lg:gap-6 gap-4">
+              {/* Left panel — voter & match selection */}
+              <div className="glass-card rounded-2xl p-4 sm:p-6 lg:w-80 lg:shrink-0 space-y-4">
                 <div>
-                  <label className="block text-foreground font-medium mb-3">
-                    Hodnocení táhlem – hodnotte fair a pozitivně (0 = nebyl nasazen, 10 = nejlepší)
-                  </label>
-                  <div className="space-y-4">
-                    {otherPlayers.map((p) => {
-                      const val = scores[p.id] ?? 0;
-                      return (
-                        <div key={p.id} className="space-y-1">
-                          <div className="flex justify-between items-center">
-                            <span className="text-foreground font-medium">
-                              {p.name}
-                              {coachPlayerId === p.id && (
-                                <span className="text-blue-400 text-xs font-medium ml-1">(trenér)</span>
-                              )}
-                            </span>
-                            <span className="flex items-center gap-2">
-                              <span className="text-2xl" aria-hidden title={RATING_LABELS[val] ?? ''}>{RATING_EMOJI[val]}</span>
-                              <span className="text-blue-400 font-semibold tabular-nums">{val === 0 ? '0 (nehrál)' : `${val}/10`}</span>
-                            </span>
-                          </div>
+                  <h2 className="text-base sm:text-lg font-semibold text-foreground mb-1">Ohodnoť spoluhráče</h2>
+                  <p className="text-foreground/60 text-sm">
+                    Vyber sebe, zvol zápas a hodnoť od 0 do 10.
+                  </p>
+                </div>
+                {voteSubmittedSuccess && (
+                  <div className="p-3 rounded-xl bg-accent/20 border border-accent/50 flex items-center gap-2">
+                    <span className="text-[#1f3768] dark:text-accent-dark text-xl">✓</span>
+                    <p className="text-[#1f3768] dark:text-accent-light font-medium text-sm">Hotovo! Tvůj hlas je v systému.</p>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-foreground font-medium mb-2 text-sm">Kdo hlasuje?</label>
+                  <Select
+                    value={voterId || '__none__'}
+                    onValueChange={(value) => {
+                      setVoterId(value === '__none__' ? '' : value);
+                      setShowVoteValidation(false);
+                    }}
+                  >
+                    <SelectTrigger className={`w-full rounded-xl glass-input text-foreground focus:ring-2 focus:ring-blue-400 ${showVoteValidation && !voterId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}>
+                      <SelectValue placeholder="Vyberte sebe" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Vyberte sebe</SelectItem>
+                      {players.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                          {coachPlayerId === p.id ? ' (trenér)' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="block text-foreground font-medium mb-2 text-sm">Za který zápas?</label>
+                  <Select
+                    value={matchId || '__none__'}
+                    onValueChange={(val) => {
+                      if (val === '__add_match__') {
+                        setMatchId('');
+                        setTab('manage');
+                      } else if (val === '__none__') {
+                        setMatchId('');
+                        setShowVoteValidation(false);
+                      } else {
+                        setMatchId(val);
+                        setShowVoteValidation(false);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className={`w-full rounded-xl glass-input text-foreground focus:ring-2 focus:ring-blue-400 ${showVoteValidation && !matchId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}>
+                      <SelectValue placeholder="Vyberte zápas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Vyberte zápas</SelectItem>
+                      {playedMatches.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>
+                          {formatEventDateTime(m.date, m.startTime)}
+                          {m.opponent ? ` vs ${m.opponent}` : ''}
+                          {(m.goalsFor != null && m.goalsAgainst != null)
+                            ? ` ${m.goalsFor}:${m.goalsAgainst}`
+                            : m.result
+                              ? ` ${m.result}`
+                              : ''}
+                        </SelectItem>
+                      ))}
+                      {playedMatches.length === 0 && (
+                        <SelectItem value="__no_played_matches__" disabled>
+                          Žádný odehraný zápas s časem
+                        </SelectItem>
+                      )}
+                      <SelectItem value="__add_match__">➕ Přidat zápas</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {hasVoted === true && matchId && (
+                  <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/40">
+                    <p className="text-amber-200 font-medium text-sm">Už jste pro tento zápas hlasoval.</p>
+                    <p className="text-foreground/70 text-xs mt-1">Hodnocení nelze měnit.</p>
+                  </div>
+                )}
+
+                {/* Player list — desktop sidebar */}
+                {otherPlayers.length > 0 && voterId && matchId && hasVoted === false && (
+                  <div>
+                    <p className="text-foreground/40 text-xs uppercase tracking-wider mb-2">Hráči</p>
+                    <div className="space-y-1 max-h-[40vh] overflow-y-auto">
+                      {otherPlayers.map((p, i) => {
+                        const s = scores[p.id] ?? 0;
+                        const lastName = p.name.split(' ').pop();
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setCurrentPlayerIndex(i)}
+                            className={`w-full text-left text-sm px-3 py-2 rounded-xl flex items-center justify-between transition-colors ${
+                              i === currentPlayerIndex
+                                ? 'bg-blue-500/15 text-blue-400 border border-blue-500/40'
+                                : 'text-foreground/70 hover:bg-surface border border-transparent'
+                            }`}
+                          >
+                            <span className="truncate">{p.name}</span>
+                            {s > 0 && (
+                              <span className="text-xs text-foreground/40 ml-2 shrink-0">{s}/10</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right panel — player card */}
+              <div className="flex-1 min-w-0">
+                {(!voterId || !matchId) && hasVoted !== true && (
+                  <div className="glass-card rounded-2xl p-8 flex items-center justify-center min-h-[300px] lg:min-h-[400px]">
+                    <p className="text-foreground/30 text-sm">Vyber sebe a zápas pro hodnocení</p>
+                  </div>
+                )}
+                {otherPlayers.length > 0 && voterId && matchId && hasVoted === false && (() => {
+                  const currentPlayer = otherPlayers[currentPlayerIndex];
+                  if (!currentPlayer) return null;
+                  const val = scores[currentPlayer.id] ?? 0;
+                  const isLast = currentPlayerIndex === otherPlayers.length - 1;
+                  const initials = currentPlayer.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+                  return (
+                    <div className="space-y-6">
+                      {/* Progress */}
+                      <div className="text-center">
+                        <span className="text-foreground/40 text-sm">{currentPlayerIndex + 1} / {otherPlayers.length} hráčů</span>
+                        <div className="mt-2 h-1 rounded-full bg-white/[0.08] max-w-md mx-auto">
+                          <div
+                            className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                            style={{ width: `${((currentPlayerIndex + 1) / otherPlayers.length) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Player Card */}
+                      <div className="glass-card rounded-3xl p-6 sm:p-8 max-w-md mx-auto text-center">
+                        {/* Avatar */}
+                        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500/30 to-blue-500/10 border-2 border-blue-500/40 flex items-center justify-center mx-auto mb-4 overflow-hidden">
+                          {currentPlayer.photoUrl ? (
+                            <img src={currentPlayer.photoUrl} alt={currentPlayer.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-xl font-bold text-blue-400">{initials}</span>
+                          )}
+                        </div>
+
+                        {/* Name */}
+                        <h3 className="text-xl font-bold text-foreground">{currentPlayer.name}</h3>
+                        {coachPlayerId === currentPlayer.id && (
+                          <span className="text-blue-400 text-xs font-medium">(trenér)</span>
+                        )}
+
+                        {/* Big rating number */}
+                        <div className="mt-6 mb-2">
+                          <span className="text-5xl font-bold text-blue-400 tabular-nums">{val}</span>
+                          <span className="text-2xl text-foreground/30 font-light">/10</span>
+                        </div>
+
+                        {/* Emoji + label */}
+                        <p className="text-foreground/50 text-sm mb-6">
+                          <span className="text-2xl mr-1">{RATING_EMOJI[val]}</span> {RATING_LABELS[val]}
+                        </p>
+
+                        {/* Slider */}
+                        <div className="px-2">
                           <SmoothSnapSlider
                             value={val}
                             onChange={(v) =>
                               setScores((prev) => ({
                                 ...prev,
-                                [p.id]: v,
+                                [currentPlayer.id]: v,
                               }))
                             }
                           />
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {voterId && matchId && hasVoted === false && (
-                <button
-                  type="submit"
-                  disabled={!canSubmit || submitting}
-                  className="w-full py-3 bg-blue-500 hover:bg-blue-600 rounded-xl text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {submitting && <LoadingSpinner size="sm" />}
-                  <span>{submitting ? 'Odesílám...' : 'Odeslat hodnocení'}</span>
-                </button>
-              )}
-            </form>
-          </div>
+                        <p className="text-foreground/30 text-xs mt-2">0 = nebyl nasazen &middot; 10 = nejlepší</p>
+                      </div>
+
+                      {/* Navigation */}
+                      <div className="flex gap-3 max-w-md mx-auto">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPlayerIndex(Math.max(0, currentPlayerIndex - 1))}
+                          disabled={currentPlayerIndex === 0}
+                          className="flex-1 py-3 rounded-xl border border-border text-foreground font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface transition-colors"
+                        >
+                          Zpět
+                        </button>
+                        {isLast ? (
+                          <button
+                            type="submit"
+                            disabled={!canSubmit || submitting}
+                            className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 rounded-xl text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          >
+                            {submitting && <LoadingSpinner size="sm" />}
+                            <span>{submitting ? 'Odesílám...' : 'Odeslat hodnocení'}</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPlayerIndex(currentPlayerIndex + 1)}
+                            className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 rounded-xl text-white font-medium transition-colors"
+                          >
+                            Další hráč
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </form>
         )}
 
         {tab === 'leaderboard' && (
           <div className="glass-card rounded-2xl p-4 sm:p-6 max-w-3xl">
-            <h2 className="text-base sm:text-lg font-semibold text-foreground mb-4">Žebříček hráčů</h2>
+            <h2 className="text-base sm:text-lg font-semibold text-foreground mb-4">Žebříček formy</h2>
             <p className="text-foreground/60 text-sm mb-4">
-              Průměrné hodnocení od spoluhráčů po zápasech. Čím více hlasů, tím reprezentativnější. Odznáčky: Střelec ⚽, Dříč 💪 (docházka), Král asistencí 👑.
+              Průměrné hodnocení od spoluhráčů po zápasech.
             </p>
             {(matchSeasons.length > 0 || matches.length > 0) && (
               <div className="mb-4">
