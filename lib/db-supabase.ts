@@ -41,6 +41,7 @@ export interface Team {
   backgroundColor?: string;
   coachPlayerId?: string;
   overviewLayout?: TeamOverviewLayout;
+  websiteSlug?: string;
 }
 
 export interface Admin {
@@ -83,6 +84,7 @@ const columnMapping: Record<string, string> = {
   'backgroundColor': 'background_color',
   'coachPlayerId': 'coach_player_id',
   'overviewLayout': 'overview_layout',
+  'websiteSlug': 'website_slug',
 };
 
 const reverseColumnMapping: Record<string, string> = Object.fromEntries(

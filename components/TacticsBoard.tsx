@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 interface Player {
   id: string;
   name: string;
+  jerseyNumber?: number;
 }
 
 const PEN_COLORS = [
@@ -16,6 +17,7 @@ const PEN_COLORS = [
 interface PlacedPlayer {
   playerId: string;
   playerName: string;
+  jerseyNumber?: number;
   x: number; // 0-100 percentage
   y: number;
 }
@@ -400,6 +402,7 @@ export default function TacticsBoard({ players }: { players: Player[] }) {
     if (!canAddPlayer || placedIds.has(player.id)) return;
     e.dataTransfer.setData('playerId', player.id);
     e.dataTransfer.setData('playerName', player.name);
+    e.dataTransfer.setData('jerseyNumber', player.jerseyNumber != null ? String(player.jerseyNumber) : '');
     e.dataTransfer.effectAllowed = 'copy';
   };
 
@@ -419,8 +422,10 @@ export default function TacticsBoard({ players }: { players: Player[] }) {
 
     const playerId = e.dataTransfer.getData('playerId');
     const playerName = e.dataTransfer.getData('playerName');
+    const jerseyNumberRaw = e.dataTransfer.getData('jerseyNumber');
+    const jerseyNumber = jerseyNumberRaw ? Number(jerseyNumberRaw) : undefined;
     if (!canAddPlayer || !playerId || !playerName || placedIds.has(playerId)) return;
-    setPlacedPlayers((prev) => [...prev, { playerId, playerName, x, y }]);
+    setPlacedPlayers((prev) => [...prev, { playerId, playerName, jerseyNumber, x, y }]);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -542,7 +547,9 @@ export default function TacticsBoard({ players }: { players: Player[] }) {
                 } ${!canAddPlayer && !onPitch ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <JerseySVGSmall />
-                <span className="text-white text-sm truncate flex-1">{p.name}</span>
+                <span className="text-white text-sm truncate flex-1">
+                  {p.jerseyNumber != null ? `#${p.jerseyNumber} ` : ''}{p.name}
+                </span>
               </div>
             );
           })
@@ -747,6 +754,11 @@ export default function TacticsBoard({ players }: { players: Player[] }) {
               <div className="flex flex-col items-center">
                 <div className="relative group">
                   <JerseySVG size={48} className="sm:w-14 sm:h-14 drop-shadow-lg" />
+                  {p.jerseyNumber != null && (
+                    <span className="absolute inset-0 flex items-center justify-center text-[11px] sm:text-xs font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+                      #{p.jerseyNumber}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeFromPitch(p.playerId)}

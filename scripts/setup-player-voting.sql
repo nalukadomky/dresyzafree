@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS players (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
+  jersey_number INTEGER CHECK (jersey_number BETWEEN 1 AND 99),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

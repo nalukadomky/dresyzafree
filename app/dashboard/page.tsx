@@ -256,31 +256,62 @@ export default function DashboardPage() {
         </div>
 
         <div className="space-y-4">
-          {/* Týmová zóna — zelená CTA karta */}
-          <MotionItem delay={0.02}>
-            <Link href="/dashboard/hodnoceni-hracu" className="block">
-              <motion.div
-                className="relative overflow-hidden rounded-2xl p-5 sm:p-6 group cursor-pointer"
-                style={{
-                  background: 'linear-gradient(135deg, #86EF42 0%, #65d630 40%, #4ade80 100%)',
-                }}
-                whileHover={{ y: -2 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-              >
-                <div className="flex items-center justify-between relative z-10">
-                  <div className="flex-1 min-w-0">
-                    <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-1">Týmová zóna</h2>
-                    <p className="text-gray-800/70 text-sm">
-                      Správa hráčů, zápasů, tréninků, hodnocení a taktiky
-                    </p>
+          {/* Týmová zóna + Týmový web — dvě karty vedle sebe */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <MotionItem delay={0.02}>
+              <Link href="/dashboard/hodnoceni-hracu" className="block h-full">
+                <motion.div
+                  className="relative overflow-hidden rounded-2xl p-8 sm:p-10 group cursor-pointer h-full min-h-[340px] sm:min-h-[400px]"
+                  style={{
+                    background: 'linear-gradient(135deg, #86EF42 0%, #65d630 40%, #4ade80 100%)',
+                  }}
+                  whileHover={{ y: -2 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                >
+                  <div className="flex flex-col justify-between h-full relative z-10">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Týmová zóna</h2>
+                      <p className="text-gray-800/70 text-sm sm:text-base">
+                        Správa hráčů, zápasů, tréninků, hodnocení a taktiky
+                      </p>
+                    </div>
+                    <div className="flex justify-end mt-4">
+                      <svg className="w-5 h-5 text-gray-900/40 group-hover:text-gray-900/70 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
                   </div>
-                  <svg className="w-5 h-5 text-gray-900/40 group-hover:text-gray-900/70 group-hover:translate-x-1 transition-all shrink-0 ml-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                  </svg>
-                </div>
-              </motion.div>
-            </Link>
-          </MotionItem>
+                </motion.div>
+              </Link>
+            </MotionItem>
+
+            <MotionItem delay={0.04}>
+              <Link href="/dashboard/tymovy-web" className="block h-full">
+                <motion.div
+                  className="relative overflow-hidden rounded-2xl p-8 sm:p-10 group cursor-pointer h-full min-h-[340px] sm:min-h-[400px]"
+                  style={{
+                    background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 40%, #6366F1 100%)',
+                  }}
+                  whileHover={{ y: -2 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                >
+                  <div className="flex flex-col justify-between h-full relative z-10">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">Týmový web</h2>
+                      <p className="text-white/70 text-sm sm:text-base">
+                        Vytvořte si jednoduchou webovku pro váš tým
+                      </p>
+                    </div>
+                    <div className="flex justify-end mt-4">
+                      <svg className="w-5 h-5 text-white/40 group-hover:text-white/70 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </div>
+                </motion.div>
+              </Link>
+            </MotionItem>
+          </div>
 
           {/* Časovač - Dodání dresů */}
           {team?.deadline && (

@@ -10,6 +10,7 @@ export interface Player {
   id: string;
   teamId: string;
   name: string;
+  jerseyNumber?: number;
   photoUrl?: string;
   createdAt: string;
 }
@@ -40,6 +41,7 @@ const mapPlayer = (row: any): Player => ({
   id: row.id,
   teamId: row.team_id,
   name: row.name,
+  jerseyNumber: row.jersey_number ?? undefined,
   photoUrl: row.photo_url || undefined,
   createdAt: row.created_at,
 });
@@ -78,14 +80,33 @@ export const dbPlayers = {
       if (error || !data) return null;
       return mapPlayer(data);
     },
-    add: async (teamId: string, name: string): Promise<Player> => {
+    add: async (teamId: string, name: string, jerseyNumber?: number): Promise<Player> => {
       const { data, error } = await client!
         .from('players')
-        .insert({ team_id: teamId, name: name.trim() })
+        .insert({ team_id: teamId, name: name.trim(), jersey_number: jerseyNumber ?? null })
         .select()
         .single();
       if (error) throw new Error(error.message);
       return mapPlayer(data);
+    },
+    update: async (
+      id: string,
+      teamId: string,
+      updates: { name?: string; jerseyNumber?: number | null }
+    ): Promise<Player | null> => {
+      const toUpdate: Record<string, unknown> = {};
+      if ('name' in updates) toUpdate.name = (updates.name ?? '').trim();
+      if ('jerseyNumber' in updates) toUpdate.jersey_number = updates.jerseyNumber ?? null;
+      if (Object.keys(toUpdate).length === 0) return null;
+      const { data, error } = await client!
+        .from('players')
+        .update(toUpdate)
+        .eq('id', id)
+        .eq('team_id', teamId)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data ? mapPlayer(data) : null;
     },
     delete: async (id: string, teamId: string): Promise<boolean> => {
       const { error } = await client!

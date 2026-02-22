@@ -194,6 +194,7 @@ interface Player {
   id: string;
   teamId: string;
   name: string;
+  jerseyNumber?: number;
   photoUrl?: string;
 }
 
@@ -209,6 +210,15 @@ interface Match {
   startTime?: string;
   /** Z hodnocení spoluhráčů a trenéra (nejvyšší průměr) */
   playerOfMatch?: { playerId: string; playerName: string } | null;
+}
+
+interface IcsImportCandidate {
+  uid: string;
+  date: string;
+  startTime: string;
+  opponent: string;
+  summary: string;
+  selected: boolean;
 }
 
 interface LeaderboardEntry {
@@ -474,6 +484,136 @@ function getSeasonFromDate(dateStr: string): string {
   const month = d.getMonth() + 1; // 1-12
   if (month >= 7) return `${year}/${String(year + 1).slice(-2)}`;
   return `${year - 1}/${String(year).slice(-2)}`;
+}
+
+function unescapeIcsValue(value: string): string {
+  return value
+    .replace(/\\n/gi, ' ')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\')
+    .trim();
+}
+
+function unfoldIcsLines(content: string): string[] {
+  const rawLines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const lines: string[] = [];
+  for (const line of rawLines) {
+    if ((line.startsWith(' ') || line.startsWith('\t')) && lines.length > 0) {
+      lines[lines.length - 1] += line.slice(1);
+    } else {
+      lines.push(line);
+    }
+  }
+  return lines;
+}
+
+function parseIcsDateTime(raw: string): { date: string; startTime: string } | null {
+  const value = raw.trim();
+  if (/^\d{8}$/.test(value)) return null;
+
+  const timed = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})\d{2}(Z)?$/);
+  if (!timed) return null;
+  const [, year, month, day, hh, mm, zulu] = timed;
+
+  if (!zulu) {
+    return { date: `${year}-${month}-${day}`, startTime: `${hh}:${mm}` };
+  }
+
+  const dt = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hh), Number(mm), 0));
+  if (Number.isNaN(dt.getTime())) return null;
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  const h = String(dt.getHours()).padStart(2, '0');
+  const min = String(dt.getMinutes()).padStart(2, '0');
+  return { date: `${y}-${m}-${d}`, startTime: `${h}:${min}` };
+}
+
+function extractOpponentFromSummary(summary: string, clubFilter: string): string {
+  const trimmed = summary.trim();
+  if (!trimmed) return 'Soupeř';
+  if (!clubFilter.trim()) return trimmed;
+
+  const escaped = clubFilter.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const withoutClub = trimmed.replace(new RegExp(escaped, 'ig'), ' ');
+  const withoutSeparators = withoutClub.replace(/\s*(vs\.?| v | x |:|-|–|—)\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+  return withoutSeparators || trimmed;
+}
+
+function parseIcsImportCandidates(content: string, clubFilter: string): {
+  candidates: IcsImportCandidate[];
+  totalEvents: number;
+  matchingEvents: number;
+  skippedWithoutTime: number;
+} {
+  const lines = unfoldIcsLines(content);
+  const events: Array<Record<string, string>> = [];
+  let current: Record<string, string> | null = null;
+
+  for (const line of lines) {
+    if (line === 'BEGIN:VEVENT') {
+      current = {};
+      continue;
+    }
+    if (line === 'END:VEVENT') {
+      if (current) events.push(current);
+      current = null;
+      continue;
+    }
+    if (!current) continue;
+    const idx = line.indexOf(':');
+    if (idx <= 0) continue;
+    const rawKey = line.slice(0, idx);
+    const value = line.slice(idx + 1);
+    const key = rawKey.split(';')[0].toUpperCase();
+    if (!current[key]) current[key] = value;
+  }
+
+  const normalizedFilter = clubFilter.trim().toLowerCase();
+  let skippedWithoutTime = 0;
+  let matchingEvents = 0;
+  const candidates: IcsImportCandidate[] = [];
+
+  for (const ev of events) {
+    const summary = unescapeIcsValue(ev.SUMMARY || '');
+    const description = unescapeIcsValue(ev.DESCRIPTION || '');
+    const location = unescapeIcsValue(ev.LOCATION || '');
+    const searchText = `${summary} ${description} ${location}`.toLowerCase();
+    if (normalizedFilter && !searchText.includes(normalizedFilter)) continue;
+    matchingEvents += 1;
+
+    const dtstart = ev.DTSTART;
+    if (!dtstart) continue;
+    const parsed = parseIcsDateTime(dtstart);
+    if (!parsed) {
+      skippedWithoutTime += 1;
+      continue;
+    }
+    const opponent = extractOpponentFromSummary(summary, clubFilter);
+    const uid = (ev.UID || `${parsed.date}-${parsed.startTime}-${summary}`).trim();
+    candidates.push({
+      uid,
+      date: parsed.date,
+      startTime: parsed.startTime,
+      opponent,
+      summary: summary || `${parsed.date} ${parsed.startTime}`,
+      selected: true,
+    });
+  }
+
+  const dedup = new Map<string, IcsImportCandidate>();
+  for (const candidate of candidates) {
+    const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.toLowerCase()}`;
+    if (!dedup.has(key)) dedup.set(key, candidate);
+  }
+
+  return {
+    candidates: Array.from(dedup.values()).sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`)),
+    totalEvents: events.length,
+    matchingEvents,
+    skippedWithoutTime,
+  };
 }
 
 /** Odpovědi na účast se uzavírají den před událostí do půlnoci. */
@@ -760,6 +900,7 @@ function HodnoceniHracuContent() {
   const [playerCardModal, setPlayerCardModal] = useState<LeaderboardEntry | null>(null);
 
   const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerJerseyNumber, setNewPlayerJerseyNumber] = useState('');
   const [newMatchDate, setNewMatchDate] = useState('');
   const [newMatchStartTime, setNewMatchStartTime] = useState('');
   const [newMatchOpponent, setNewMatchOpponent] = useState('');
@@ -776,14 +917,28 @@ function HodnoceniHracuContent() {
   const [voteSubmittedSuccess, setVoteSubmittedSuccess] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ playerId: string; playerName: string } | null>(null);
   const [deleteFeedback, setDeleteFeedback] = useState<string | null>(null);
-  const [matchesSeason, setMatchesSeason] = useState<string | null>(null);
+  const [playerJerseyInputs, setPlayerJerseyInputs] = useState<Record<string, string>>({});
+  const [savingPlayerJerseyId, setSavingPlayerJerseyId] = useState<string | null>(null);
+  const [playerJerseyFeedback, setPlayerJerseyFeedback] = useState<string | null>(null);
+  const [matchesSeason, setMatchesSeason] = useState<string>('__all__');
   const [leaderboardFilter, setLeaderboardFilter] = useState<string>('');
   const [canadianStats, setCanadianStats] = useState<CanadianEntry[]>([]);
   const [canadianFilter, setCanadianFilter] = useState<string>('');
   const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
   const [matchScorersData, setMatchScorersData] = useState<Record<string, { scorers: { goalOrder: number; playerId: string }[]; assists: { assistOrder: number; playerId: string }[] }>>({});
   const newPlayerInputRef = useRef<HTMLInputElement>(null);
+  const icsFileInputRef = useRef<HTMLInputElement>(null);
   const [matchScorersSaving, setMatchScorersSaving] = useState<string | null>(null);
+  const [icsClubFilter, setIcsClubFilter] = useState('');
+  const [icsCandidates, setIcsCandidates] = useState<IcsImportCandidate[]>([]);
+  const [icsPanelOpen, setIcsPanelOpen] = useState(false);
+  const [icsPreviewOpen, setIcsPreviewOpen] = useState(false);
+  const [icsFeedback, setIcsFeedback] = useState<string | null>(null);
+  const [icsParsing, setIcsParsing] = useState(false);
+  const [icsImporting, setIcsImporting] = useState(false);
+  const [recentlyImportedMatchIds, setRecentlyImportedMatchIds] = useState<string[]>([]);
+  const importAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [deletingMatches, setDeletingMatches] = useState(false);
 
   const [events, setEvents] = useState<Event[]>([]);
   const [ucastModal, setUcastModal] = useState<Event | null>(null);
@@ -832,11 +987,23 @@ function HodnoceniHracuContent() {
   }, [router]);
 
   const matchSeasons = [...new Set(matches.map((m) => getSeasonFromDate(m.date)))].sort().reverse();
-  const selectedSeason = matchesSeason ?? matchSeasons[0] ?? getSeasonFromDate(new Date().toISOString().slice(0, 10));
-  const filteredMatches = matches.filter((m) => getSeasonFromDate(m.date) === selectedSeason);
+  const selectedSeason = matchesSeason;
+  const filteredMatches = selectedSeason === '__all__'
+    ? matches
+    : matches.filter((m) => getSeasonFromDate(m.date) === selectedSeason);
   const playedMatches = matches
     .filter((m) => isMatchPlayed(m.date, m.startTime))
     .sort((a, b) => `${b.date} ${b.startTime ?? ''}`.localeCompare(`${a.date} ${a.startTime ?? ''}`));
+
+  useEffect(() => {
+    if (!icsClubFilter && teamName) setIcsClubFilter(teamName);
+  }, [icsClubFilter, teamName]);
+
+  useEffect(() => {
+    setPlayerJerseyInputs(
+      Object.fromEntries(players.map((p) => [p.id, p.jerseyNumber != null ? String(p.jerseyNumber) : '']))
+    );
+  }, [players]);
 
   useEffect(() => {
     const t = searchParams.get('tab');
@@ -960,6 +1127,14 @@ function HodnoceniHracuContent() {
     }
   }, [matchId, playedMatches]);
 
+  useEffect(() => {
+    return () => {
+      if (importAnimationTimeoutRef.current) {
+        clearTimeout(importAnimationTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const fetchPlayers = async () => {
     if (!teamId || !token) return;
     const res = await fetch(`/api/teams/${teamId}/players`, { headers: { Authorization: `Bearer ${token}` } });
@@ -969,13 +1144,15 @@ function HodnoceniHracuContent() {
     }
   };
 
-  const fetchMatches = async () => {
-    if (!teamId || !token) return;
+  const fetchMatches = async (): Promise<Match[]> => {
+    if (!teamId || !token) return [];
     const res = await fetch(`/api/teams/${teamId}/matches`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
       const data = await res.json();
       setMatches(data.matches);
+      return data.matches || [];
     }
+    return [];
   };
 
   const fetchLeaderboard = async () => {
@@ -1256,15 +1433,21 @@ function HodnoceniHracuContent() {
   const addPlayer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPlayerName.trim() || !teamId || !token) return;
+    const jerseyNumber = newPlayerJerseyNumber.trim() ? Number(newPlayerJerseyNumber.trim()) : null;
+    if (jerseyNumber != null && (!Number.isInteger(jerseyNumber) || jerseyNumber < 1 || jerseyNumber > 99)) {
+      alert('Číslo dresu musí být celé číslo v rozsahu 1-99.');
+      return;
+    }
     setAddingPlayer(true);
     try {
       const res = await fetch(`/api/teams/${teamId}/players`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ name: newPlayerName.trim() }),
+        body: JSON.stringify({ name: newPlayerName.trim(), jerseyNumber }),
       });
       if (res.ok) {
         setNewPlayerName('');
+        setNewPlayerJerseyNumber('');
         await fetchPlayers();
       } else {
         const d = await res.json();
@@ -1272,6 +1455,38 @@ function HodnoceniHracuContent() {
       }
     } finally {
       setAddingPlayer(false);
+    }
+  };
+
+  const savePlayerJerseyNumber = async (playerId: string) => {
+    if (!teamId || !token) return;
+    const raw = (playerJerseyInputs[playerId] || '').trim();
+    const parsedNumber = raw ? Number(raw) : null;
+    const hasValidNumber =
+      parsedNumber != null && Number.isInteger(parsedNumber) && parsedNumber >= 1 && parsedNumber <= 99;
+    if (raw && !hasValidNumber) {
+      setPlayerJerseyFeedback('error:Číslo dresu musí být celé číslo v rozsahu 1-99.');
+      setTimeout(() => setPlayerJerseyFeedback(null), 3000);
+      return;
+    }
+    const jerseyNumber = hasValidNumber ? parsedNumber : null;
+    setSavingPlayerJerseyId(playerId);
+    try {
+      const res = await fetch(`/api/teams/${teamId}/players/${playerId}`, {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify({ jerseyNumber }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        await fetchPlayers();
+        setPlayerJerseyFeedback('success:Číslo dresu bylo uloženo.');
+      } else {
+        setPlayerJerseyFeedback(`error:${d.error || 'Nepodařilo se uložit číslo dresu.'}`);
+      }
+      setTimeout(() => setPlayerJerseyFeedback(null), 3000);
+    } finally {
+      setSavingPlayerJerseyId(null);
     }
   };
 
@@ -1364,12 +1579,158 @@ function HodnoceniHracuContent() {
     }
   };
 
+  const handleIcsFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.ics') && file.type !== 'text/calendar') {
+      setIcsFeedback('error:Vyberte prosím soubor .ics (kalendář).');
+      return;
+    }
+
+    setIcsParsing(true);
+    setIcsFeedback(null);
+    try {
+      const content = await file.text();
+      const parsed = parseIcsImportCandidates(content, icsClubFilter);
+      setIcsPanelOpen(true);
+      setIcsCandidates(parsed.candidates);
+      setIcsPreviewOpen(parsed.candidates.length > 0);
+      setIcsFeedback(
+        `success:Načteno ${parsed.candidates.length} zápasů z ${parsed.totalEvents} událostí` +
+          (icsClubFilter.trim() ? ` (filtr: "${icsClubFilter.trim()}")` : '') +
+          `. Odpovídajících událostí: ${parsed.matchingEvents}.` +
+          (parsed.skippedWithoutTime > 0 ? ` Přeskočeno bez času: ${parsed.skippedWithoutTime}.` : '')
+      );
+      if (icsFileInputRef.current) icsFileInputRef.current.value = '';
+    } catch {
+      setIcsFeedback('error:Nepodařilo se načíst .ics soubor.');
+    } finally {
+      setIcsParsing(false);
+    }
+  };
+
+  const toggleIcsCandidate = (uid: string) => {
+    setIcsCandidates((prev) => prev.map((item) => (item.uid === uid ? { ...item, selected: !item.selected } : item)));
+  };
+
+  const setAllIcsCandidates = (selected: boolean) => {
+    setIcsCandidates((prev) => prev.map((item) => ({ ...item, selected })));
+  };
+
+  const resetIcsImportSession = ({ keepFeedback = false }: { keepFeedback?: boolean } = {}) => {
+    setIcsCandidates([]);
+    setIcsPreviewOpen(false);
+    if (!keepFeedback) setIcsFeedback(null);
+    if (icsFileInputRef.current) icsFileInputRef.current.value = '';
+  };
+
+  const importSelectedIcsMatches = async () => {
+    if (!teamId || !token) return;
+    const selected = icsCandidates.filter((item) => item.selected);
+    if (selected.length === 0) {
+      setIcsFeedback('error:Vyberte alespoň jeden zápas k importu.');
+      return;
+    }
+
+    setIcsImporting(true);
+    setIcsFeedback(null);
+    try {
+      const existing = new Set(
+        matches.map((m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`)
+      );
+      let created = 0;
+      let skipped = 0;
+      let failed = 0;
+      const createdKeys: string[] = [];
+
+      for (const candidate of selected) {
+        const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.trim().toLowerCase()}`;
+        if (existing.has(key)) {
+          skipped += 1;
+          continue;
+        }
+        const res = await fetch(`/api/teams/${teamId}/matches`, {
+          method: 'POST',
+          headers: headers(),
+          body: JSON.stringify({
+            date: candidate.date,
+            startTime: candidate.startTime,
+            opponent: candidate.opponent || undefined,
+          }),
+        });
+        if (res.ok) {
+          created += 1;
+          existing.add(key);
+          createdKeys.push(key);
+        } else {
+          failed += 1;
+        }
+      }
+
+      const latestMatches = await fetchMatches();
+      if (importAnimationTimeoutRef.current) {
+        clearTimeout(importAnimationTimeoutRef.current);
+      }
+      const importedIds = latestMatches
+        .filter((m) => createdKeys.includes(`${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`))
+        .map((m) => m.id);
+      setRecentlyImportedMatchIds(importedIds);
+      if (importedIds.length > 0) {
+        importAnimationTimeoutRef.current = setTimeout(() => {
+          setRecentlyImportedMatchIds([]);
+        }, 2200);
+      }
+      resetIcsImportSession({ keepFeedback: true });
+      setIcsPanelOpen(false);
+      setIcsFeedback(`success:Import hotov. Přidáno: ${created}, přeskočeno (duplicitní): ${skipped}, chyby: ${failed}.`);
+    } finally {
+      setIcsImporting(false);
+    }
+  };
+
+
   const deleteMatch = async (matchId: string) => {
     if (!confirm('Opravdu smazat zápas?')) return;
     const res = await fetch(`/api/teams/${teamId}/matches/${matchId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
       setExpandedMatchId((prev) => (prev === matchId ? null : prev));
       await fetchMatches();
+    }
+  };
+
+  const deleteAllMatches = async (scope: 'all' | 'season') => {
+    if (!teamId || !token) return;
+    const targetMatches = scope === 'all' ? matches : filteredMatches;
+    if (targetMatches.length === 0) {
+      alert(scope === 'all' ? 'Není co mazat.' : 'Ve vybrané sezóně nejsou žádné zápasy.');
+      return;
+    }
+    const seasonLabel = selectedSeason === '__all__' ? 'všechny sezóny' : `sezónu ${selectedSeason}`;
+    const prompt =
+      scope === 'all'
+        ? `Opravdu smazat všechny zápasy (${targetMatches.length})?`
+        : `Opravdu smazat všechny zápasy pro ${seasonLabel} (${targetMatches.length})?`;
+    if (!confirm(prompt)) return;
+
+    setDeletingMatches(true);
+    try {
+      const results = await Promise.allSettled(
+        targetMatches.map((m) =>
+          fetch(`/api/teams/${teamId}/matches/${m.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        )
+      );
+      const failed = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)).length;
+      await fetchMatches();
+      if (failed > 0) {
+        alert(`Mazání dokončeno s chybami. Nepodařilo se smazat ${failed} zápasů.`);
+      } else {
+        alert('Zápasy byly smazány.');
+      }
+    } finally {
+      setDeletingMatches(false);
     }
   };
 
@@ -2024,10 +2385,12 @@ function HodnoceniHracuContent() {
                   <SelectTrigger className="w-full max-w-xs rounded-lg glass-input text-foreground focus:ring-2 focus:ring-blue-400 disabled:opacity-50">
                     <SelectValue placeholder="— Bez trenéra" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— Bez trenéra</SelectItem>
+                    <SelectContent>
+                      <SelectItem value="__none__">— Bez trenéra</SelectItem>
                     {players.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.jerseyNumber != null ? `#${p.jerseyNumber} ` : ''}{p.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2044,6 +2407,16 @@ function HodnoceniHracuContent() {
                   className="flex-1 px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
                   required
                 />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={newPlayerJerseyNumber}
+                  onChange={(e) => setNewPlayerJerseyNumber(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                  placeholder="#"
+                  className="w-20 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-center"
+                  title="Číslo dresu (1-99)"
+                />
                 <button type="submit" disabled={addingPlayer} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium disabled:opacity-50">
                   {addingPlayer ? '...' : 'Přidat'}
                 </button>
@@ -2051,44 +2424,102 @@ function HodnoceniHracuContent() {
               <ul className="space-y-2">
                 {players.map((p) => (
                   <li key={p.id} className="flex justify-between items-center py-2 border-b border-border gap-2">
-                    <span className="text-foreground flex items-center gap-2">
-                      {p.name}
+                    <span className="text-foreground flex items-center gap-2 min-w-0">
+                      <span className="truncate">
+                        {p.jerseyNumber != null ? `#${p.jerseyNumber} ` : ''}{p.name}
+                      </span>
                       {coachPlayerId === p.id && (
-                        <span className="text-blue-400 text-xs font-medium">(trenér)</span>
+                        <span className="text-blue-400 text-xs font-medium shrink-0">(trenér)</span>
                       )}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => deletePlayer(p.id, p.name)}
-                      className="text-red-400 hover:text-red-300 text-sm"
-                    >
-                      Smazat
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={playerJerseyInputs[p.id] ?? ''}
+                        onChange={(e) =>
+                          setPlayerJerseyInputs((prev) => ({
+                            ...prev,
+                            [p.id]: e.target.value.replace(/\D/g, '').slice(0, 2),
+                          }))
+                        }
+                        placeholder="#"
+                        className="w-14 px-2 py-1.5 rounded-md glass-input text-foreground placeholder-white/50 text-center text-sm"
+                        aria-label={`Číslo dresu pro ${p.name}`}
+                        title="Číslo dresu (1-99)"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => savePlayerJerseyNumber(p.id)}
+                        disabled={savingPlayerJerseyId === p.id}
+                        className="text-xs px-2.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
+                      >
+                        {savingPlayerJerseyId === p.id ? '...' : 'Uložit'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deletePlayer(p.id, p.name)}
+                        className="text-red-400 hover:text-red-300 text-sm"
+                      >
+                        Smazat
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
+              {playerJerseyFeedback && (
+                <p className={`mt-3 text-xs ${playerJerseyFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
+                  {playerJerseyFeedback.replace(/^(success|error):/, '')}
+                </p>
+              )}
               </>
             </div>
 
             <div className="glass-card rounded-2xl p-4 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <h2 className="text-base sm:text-lg font-semibold text-foreground">Zápasy</h2>
-                {matchSeasons.length > 1 && (
-                  <div className="flex gap-1">
-                    {matchSeasons.map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setMatchesSeason(s)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                          selectedSeason === s
-                            ? 'bg-blue-500/50 text-foreground border border-blue-400/50'
-                            : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    ))}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={selectedSeason}
+                    onValueChange={(value) => setMatchesSeason(value)}
+                  >
+                    <SelectTrigger className="h-9 w-[190px] rounded-lg glass-input text-foreground focus:ring-2 focus:ring-blue-400">
+                      <SelectValue placeholder="Sezóna" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Všechny sezóny</SelectItem>
+                      {matchSeasons.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <button
+                    type="button"
+                    onClick={() => deleteAllMatches('season')}
+                    disabled={deletingMatches || filteredMatches.length === 0 || selectedSeason === '__all__'}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/40 text-red-300 hover:bg-red-500/15 disabled:opacity-50"
+                    title={selectedSeason === '__all__' ? 'Nejprve vyberte konkrétní sezónu' : 'Smazat všechny zápasy vybrané sezóny'}
+                  >
+                    {deletingMatches ? 'Mažu...' : 'Smazat sezónu'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteAllMatches('all')}
+                    disabled={deletingMatches || matches.length === 0}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/40 text-red-300 hover:bg-red-500/15 disabled:opacity-50"
+                    title="Smazat všechny zápasy napříč sezónami"
+                  >
+                    {deletingMatches ? 'Mažu...' : 'Smazat vše'}
+                  </button>
+                </div>
+                {(selectedSeason !== '__all__' || matchSeasons.length > 0) && (
+                  <div className="w-full">
+                    <p className="text-xs text-foreground/60">
+                      Zobrazeno: {selectedSeason === '__all__' ? 'všechny sezóny' : `sezóna ${selectedSeason}`} ({filteredMatches.length} zápasů)
+                    </p>
                   </div>
                 )}
               </div>
@@ -2114,6 +2545,140 @@ function HodnoceniHracuContent() {
                   {addingMatch ? '...' : 'Přidat zápas'}
                 </button>
               </form>
+              <div className="mb-4 rounded-xl border border-border bg-surface/50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-foreground">Import zápasů z rozpisu (.ics)</h3>
+                    <span className="text-xs text-foreground/60">Vybere jen zápasy obsahující název klubu</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!icsPanelOpen && icsCandidates.length > 0 && (
+                      <span className="text-[11px] px-2 py-1 rounded-full border border-blue-400/40 text-blue-300 bg-blue-500/10">
+                        Nalezeno {icsCandidates.length}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIcsPanelOpen((prev) => !prev)}
+                      aria-expanded={icsPanelOpen}
+                      aria-controls="ics-import-panel"
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                    >
+                      Nahrát z .ics
+                      <span className="text-xs">{icsPanelOpen ? '▲' : '▼'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {!icsPanelOpen && icsFeedback && (
+                  <p className={`mt-2 text-xs ${icsFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
+                    {icsFeedback.replace(/^(success|error):/, '')}
+                  </p>
+                )}
+
+                <div
+                  id="ics-import-panel"
+                  className={`overflow-hidden transition-all duration-300 ease-out ${
+                    icsPanelOpen ? 'max-h-[920px] opacity-100 mt-3 translate-y-0' : 'max-h-0 opacity-0 -translate-y-1 pointer-events-none'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    <p className="text-xs text-foreground/70">
+                      Jak získat .ics: Přihlaste se do fotbal.cz, otevřete svou soutěž, přejděte na stránku <span className="font-medium">„Rozpis zápasů a výsledků"</span> a dole klikněte na <span className="font-medium">„Export do kalendáře"</span>.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={icsClubFilter}
+                        onChange={(e) => setIcsClubFilter(e.target.value)}
+                        placeholder="Název klubu v rozpisu (např. FC MyPitch)"
+                        className="flex-1 min-w-0 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-sm"
+                      />
+                      <label className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm cursor-pointer hover:bg-surface">
+                        {icsParsing ? 'Načítám...' : 'Vybrat .ics'}
+                        <input
+                          ref={icsFileInputRef}
+                          type="file"
+                          accept=".ics,text/calendar"
+                          className="hidden"
+                          onChange={handleIcsFileChange}
+                          disabled={icsParsing}
+                        />
+                      </label>
+                    </div>
+
+                    {icsFeedback && (
+                      <p className={`text-xs ${icsFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
+                        {icsFeedback.replace(/^(success|error):/, '')}
+                      </p>
+                    )}
+
+                    {icsPreviewOpen && icsCandidates.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs text-foreground/70">
+                            Nalezeno {icsCandidates.length} zápasů, k importu vybráno {icsCandidates.filter((x) => x.selected).length}.
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setAllIcsCandidates(true)}
+                              className="text-xs text-foreground/70 hover:text-foreground"
+                            >
+                              Vybrat vše
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAllIcsCandidates(false)}
+                              className="text-xs text-foreground/70 hover:text-foreground"
+                            >
+                              Zrušit výběr
+                            </button>
+                          </div>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
+                          {icsCandidates.map((item) => (
+                            <label key={`${item.uid}-${item.date}-${item.startTime}`} className="flex items-start gap-2 px-3 py-2 border-b border-border/60 last:border-b-0 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={item.selected}
+                                onChange={() => toggleIcsCandidate(item.uid)}
+                                className="mt-0.5"
+                              />
+                              <span className="text-foreground/85">
+                                <span className="font-medium">{formatEventDateTime(item.date, item.startTime)}</span>
+                                <span className="text-foreground/60"> vs {item.opponent || 'Soupeř'}</span>
+                                <span className="block text-xs text-foreground/50 truncate">{item.summary}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={importSelectedIcsMatches}
+                            disabled={icsImporting}
+                            className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium"
+                          >
+                            {icsImporting ? 'Importuji...' : 'Importovat vybrané zápasy'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetIcsImportSession({ keepFeedback: true });
+                              setIcsPanelOpen(false);
+                            }}
+                            disabled={icsImporting}
+                            className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium"
+                          >
+                            Zrušit
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
               <ul className="space-y-2">
                 {filteredMatches.map((m) => {
                   const goalsFor = m.goalsFor ?? 0;
@@ -2126,7 +2691,7 @@ function HodnoceniHracuContent() {
                       ? m.result
                       : null;
                   return (
-                    <li key={m.id} className="border-b border-border">
+                    <li key={m.id} className={`border-b border-border transition-all duration-500 ${recentlyImportedMatchIds.includes(m.id) ? 'match-imported-flash' : ''}`}>
                       <div
                         className="flex justify-between items-center py-2 gap-2 cursor-pointer hover:bg-surface rounded-lg -mx-1 px-1"
                         onClick={() => toggleMatchDetail(m)}
@@ -2927,7 +3492,7 @@ function HodnoceniHracuContent() {
                 Přetáhněte hráče na hřiště (max 11). Tužka: kreslení v zelené, červené nebo tmavě žluté.
               </p>
             </div>
-            <TacticsBoard players={players.map((p) => ({ id: p.id, name: p.name }))} />
+            <TacticsBoard players={players.map((p) => ({ id: p.id, name: p.name, jerseyNumber: p.jerseyNumber }))} />
           </div>
         )}
 
