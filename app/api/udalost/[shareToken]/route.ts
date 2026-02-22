@@ -24,9 +24,9 @@ export async function GET(
         opponent: event.opponent,
         startTime: event.startTime,
         note: event.note,
-        attendanceClosed: isAttendanceClosed(event.date),
+        attendanceClosed: isAttendanceClosed(event.date, event.startTime),
       },
-      players: players.map((p) => ({ id: p.id, name: p.name })),
+      players: players.map((p) => ({ id: p.id, name: p.name, photoUrl: p.photoUrl || null })),
       attendance: attendance.map((a) => ({
         playerId: a.playerId,
         attended: a.attended,

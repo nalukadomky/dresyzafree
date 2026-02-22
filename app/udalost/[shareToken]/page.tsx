@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
 import { GhostEvent } from '@/components/GhostLoader';
 import ThemeToggle from '@/components/ThemeToggle';
 import { MotionPage } from '@/components/Motion';
@@ -27,6 +28,7 @@ interface EventData {
 interface Player {
   id: string;
   name: string;
+  photoUrl?: string | null;
 }
 
 interface AttendanceEntry {
@@ -68,6 +70,7 @@ export default function UdalostPage() {
   }, [shareToken]);
 
   const currentAttendance = attendance.find((a) => a.playerId === selectedPlayerId);
+  const selectedPlayer = useMemo(() => players.find((p) => p.id === selectedPlayerId), [players, selectedPlayerId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,7 +154,7 @@ export default function UdalostPage() {
               <div className="text-center">
                 <p className="text-amber-400 font-medium text-lg">Odpovědi byly uzavřeny</p>
                 <p className="text-foreground/70 mt-1 text-sm">
-                  Účast se uzavírá den před událostí do půlnoci. Účast již nelze měnit.
+                  Účast se uzavírá hodinu před začátkem události. Účast již nelze měnit.
                 </p>
               </div>
               <div>
@@ -286,6 +289,29 @@ export default function UdalostPage() {
             </form>
           )}
         </div>
+
+        {/* Obrázek hráče */}
+        <AnimatePresence mode="wait">
+          {selectedPlayer?.photoUrl && (
+            <motion.div
+              key={selectedPlayer.id}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+              className="glass-card rounded-2xl p-4 flex flex-col items-center"
+            >
+              <div className="relative w-32 h-32 rounded-full overflow-hidden ring-2 ring-white/20 shadow-lg">
+                <img
+                  src={selectedPlayer.photoUrl}
+                  alt={selectedPlayer.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <p className="mt-3 text-foreground font-medium text-lg">{selectedPlayer.name}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </MotionPage>
     </div>
   );

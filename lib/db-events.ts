@@ -26,12 +26,15 @@ export interface EventWithAttendance extends Event {
   attendance: { playerId: string; attended: boolean }[];
 }
 
-/** Odpovědi se uzavírají den před událostí do půlnoci. Vrací true, pokud už nelze měnit účast. (Pro veřejný odkaz.) */
-export function isAttendanceClosed(eventDateStr: string): boolean {
-  const eventDate = new Date(eventDateStr + 'T12:00:00');
-  const deadline = new Date(eventDate);
-  deadline.setDate(deadline.getDate() - 1);
-  deadline.setHours(0, 0, 0, 0);
+/** Odpovědi se uzavírají hodinu před začátkem události. Vrací true, pokud už nelze měnit účast. (Pro veřejný odkaz.) */
+export function isAttendanceClosed(eventDateStr: string, startTime?: string): boolean {
+  let eventStart: Date;
+  if (startTime && /^\d{1,2}:\d{2}$/.test(startTime.trim())) {
+    eventStart = new Date(eventDateStr + 'T' + startTime.trim() + ':00');
+  } else {
+    eventStart = new Date(eventDateStr + 'T00:00:00');
+  }
+  const deadline = new Date(eventStart.getTime() - 60 * 60 * 1000); // 1 hour before
   return new Date() >= deadline;
 }
 

@@ -25,6 +25,7 @@ export interface Match {
   goalsFor?: number;
   goalsAgainst?: number;
   startTime?: string;
+  matchRating?: number;
   createdAt: string;
 }
 
@@ -56,6 +57,7 @@ const mapMatch = (row: any): Match => ({
   goalsFor: row.goals_for,
   goalsAgainst: row.goals_against,
   startTime: row.start_time || undefined,
+  matchRating: row.match_rating ?? undefined,
   createdAt: row.created_at,
 });
 
@@ -169,12 +171,13 @@ export const dbPlayers = {
     update: async (
       matchId: string,
       teamId: string,
-      updates: { result?: string; goalsFor?: number; goalsAgainst?: number }
+      updates: { result?: string; goalsFor?: number; goalsAgainst?: number; matchRating?: number }
     ): Promise<Match | null> => {
       const toUpdate: Record<string, unknown> = {};
       if ('result' in updates) toUpdate.result = (updates.result ?? '').trim() || null;
       if ('goalsFor' in updates) toUpdate.goals_for = updates.goalsFor ?? null;
       if ('goalsAgainst' in updates) toUpdate.goals_against = updates.goalsAgainst ?? null;
+      if ('matchRating' in updates) toUpdate.match_rating = updates.matchRating ?? null;
       if (Object.keys(toUpdate).length === 0) return null;
       const { data, error } = await client!
         .from('matches')

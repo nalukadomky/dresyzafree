@@ -8,7 +8,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import TacticsBoard from '@/components/TacticsBoard';
 import ThemeToggle from '@/components/ThemeToggle';
 import { MotionPage } from '@/components/Motion';
-import { Reorder, useDragControls } from 'framer-motion';
+import { Reorder, useDragControls, AnimatePresence, motion } from 'framer-motion';
 import {
   Select,
   SelectContent,
@@ -208,6 +208,7 @@ interface Match {
   goalsFor?: number;
   goalsAgainst?: number;
   startTime?: string;
+  matchRating?: number;
   /** Z hodnocení spoluhráčů a trenéra (nejvyšší průměr) */
   playerOfMatch?: { playerId: string; playerName: string } | null;
 }
@@ -616,12 +617,15 @@ function parseIcsImportCandidates(content: string, clubFilter: string): {
   };
 }
 
-/** Odpovědi na účast se uzavírají den před událostí do půlnoci. */
-function isUcastClosed(dateStr: string): boolean {
-  const eventDate = new Date(dateStr + 'T12:00:00');
-  const deadline = new Date(eventDate);
-  deadline.setDate(deadline.getDate() - 1);
-  deadline.setHours(0, 0, 0, 0);
+/** Odpovědi na účast se uzavírají hodinu před začátkem události. */
+function isUcastClosed(dateStr: string, startTime?: string): boolean {
+  let eventStart: Date;
+  if (startTime && /^\d{1,2}:\d{2}$/.test(startTime.trim())) {
+    eventStart = new Date(dateStr + 'T' + startTime.trim() + ':00');
+  } else {
+    eventStart = new Date(dateStr + 'T00:00:00');
+  }
+  const deadline = new Date(eventStart.getTime() - 60 * 60 * 1000);
   return new Date() >= deadline;
 }
 
@@ -633,141 +637,204 @@ function formatMatchScore(m: Match, teamLabel: string, opponentLabel: string): s
   return null;
 }
 
-function MatchResultEdit({
-  match,
-  teamId,
-  token,
-  teamLabel,
-  opponentLabel,
-  playerOfMatch,
-  onUpdated,
+const MATCH_RATING_LABELS: Record<number, { emoji: string; label: string }> = {
+  1: { emoji: '😞', label: 'Špatný' }, 2: { emoji: '😞', label: 'Špatný' }, 3: { emoji: '😞', label: 'Špatný' },
+  4: { emoji: '😐', label: 'Průměrný' }, 5: { emoji: '😐', label: 'Průměrný' },
+  6: { emoji: '🙂', label: 'Dobrý' }, 7: { emoji: '🙂', label: 'Dobrý' },
+  8: { emoji: '😄', label: 'Skvělý' }, 9: { emoji: '😄', label: 'Skvělý' },
+  10: { emoji: '🔥', label: 'Výborný!' },
+};
+
+function MatchResultPopup({
+  match, teamId, token, teamLabel, opponentLabel, players, onSaved, onClose,
 }: {
-  match: Match;
-  teamId: string;
-  token: string;
-  teamLabel: string;
-  opponentLabel: string;
-  playerOfMatch?: { playerId: string; playerName: string } | null;
-  onUpdated: () => void;
+  match: Match; teamId: string; token: string; teamLabel: string; opponentLabel: string;
+  players: { id: string; name: string }[]; onSaved: () => void; onClose: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [goalsFor, setGoalsFor] = useState(match.goalsFor ?? '');
-  const [goalsAgainst, setGoalsAgainst] = useState(match.goalsAgainst ?? '');
+  const [goalsFor, setGoalsFor] = useState(match.goalsFor != null ? String(match.goalsFor) : '');
+  const [goalsAgainst, setGoalsAgainst] = useState(match.goalsAgainst != null ? String(match.goalsAgainst) : '');
+  const [matchRating, setMatchRating] = useState(match.matchRating ?? 5);
+  const [scorers, setScorers] = useState<{ goalOrder: number; playerId: string }[]>([]);
+  const [assists, setAssists] = useState<{ assistOrder: number; playerId: string }[]>([]);
   const [saving, setSaving] = useState(false);
-  const editRef = useRef<HTMLSpanElement>(null);
-  const saveRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const [loaded, setLoaded] = useState(false);
+
+  const gfCount = (() => { const n = parseInt(goalsFor, 10); return !isNaN(n) && n >= 0 ? n : 0; })();
+
+  // Load existing scorers
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/teams/${teamId}/matches/${match.id}/scorers`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const d = await res.json();
+          const s = (d.scorers || []).map((x: any) => ({ goalOrder: x.goalOrder, playerId: x.playerId }));
+          const a = (d.assists || []).map((x: any) => ({ assistOrder: x.assistOrder, playerId: x.playerId }));
+          setScorers(s);
+          setAssists(a);
+        }
+      } finally {
+        setLoaded(true);
+      }
+    })();
+  }, []);
+
+  // Sync scorer/assist row count with goalsFor
+  useEffect(() => {
+    if (!loaded) return;
+    setScorers(prev => {
+      const arr = [...prev];
+      while (arr.length < gfCount) arr.push({ goalOrder: arr.length + 1, playerId: '' });
+      return arr.slice(0, gfCount);
+    });
+    setAssists(prev => {
+      const arr = [...prev];
+      while (arr.length < gfCount) arr.push({ assistOrder: arr.length + 1, playerId: '' });
+      return arr.slice(0, gfCount);
+    });
+  }, [gfCount, loaded]);
 
   const save = async () => {
-    const gfRaw = goalsFor === '' ? undefined : Number(goalsFor);
-    const gaRaw = goalsAgainst === '' ? undefined : Number(goalsAgainst);
-    const gf = gfRaw != null && !Number.isNaN(gfRaw) ? Math.round(gfRaw) : undefined;
-    const ga = gaRaw != null && !Number.isNaN(gaRaw) ? Math.round(gaRaw) : undefined;
-    if (gf == null && ga == null && (match.goalsFor == null && match.goalsAgainst == null)) {
-      setEditing(false);
-      return;
-    }
     setSaving(true);
     try {
-      const body: { goalsFor?: number; goalsAgainst?: number } = {};
-      if (gf != null) body.goalsFor = gf;
-      if (ga != null) body.goalsAgainst = ga;
-      const res = await fetch(`/api/teams/${teamId}/matches/${match.id}`, {
+      const body: Record<string, unknown> = { matchRating };
+      const gf = goalsFor !== '' ? parseInt(goalsFor, 10) : undefined;
+      const ga = goalsAgainst !== '' ? parseInt(goalsAgainst, 10) : undefined;
+      if (gf != null && !isNaN(gf)) body.goalsFor = gf;
+      if (ga != null && !isNaN(ga)) body.goalsAgainst = ga;
+      await fetch(`/api/teams/${teamId}/matches/${match.id}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (res.ok) {
-        onUpdated();
-        setEditing(false);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        alert(err?.error || `Chyba při ukládání (${res.status})`);
+      if (gfCount > 0) {
+        await fetch(`/api/teams/${teamId}/matches/${match.id}/scorers`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scorers: scorers.filter(s => s.playerId).map(s => ({ goalOrder: s.goalOrder, playerId: s.playerId })),
+            assists: assists.filter(a => a.playerId).map(a => ({ assistOrder: a.assistOrder, playerId: a.playerId })),
+          }),
+        });
       }
+      onSaved();
+      onClose();
     } finally {
       setSaving(false);
     }
   };
 
-  saveRef.current = save;
+  const ratingInfo = MATCH_RATING_LABELS[matchRating] || { emoji: '😐', label: '' };
 
-  useEffect(() => {
-    if (!editing) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (editRef.current && !editRef.current.contains(e.target as Node)) {
-        saveRef.current();
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [editing]);
-
-  if (editing) {
-    return (
-      <span ref={editRef} className="flex items-center gap-2">
-        <span className="flex flex-col items-center gap-0.5">
-          <span className="text-foreground/70 text-xs">{teamLabel}</span>
-          <input
-            type="number"
-            min={0}
-            value={goalsFor}
-            onChange={(e) => setGoalsFor(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && save()}
-            placeholder="0"
-            className="w-12 px-2 py-1 rounded glass-input text-foreground text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            autoFocus
-          />
-        </span>
-        <span className="text-foreground/60 text-lg pt-4">:</span>
-        <span className="flex flex-col items-center gap-0.5">
-          <span className="text-foreground/70 text-xs">{opponentLabel}</span>
-          <input
-            type="number"
-            min={0}
-            value={goalsAgainst}
-            onChange={(e) => setGoalsAgainst(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && save()}
-            placeholder="0"
-            className="w-12 px-2 py-1 rounded glass-input text-foreground text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          />
-        </span>
-        <span className="flex gap-1 pt-4">
-          <button type="button" onClick={save} disabled={saving} className="text-green-400 hover:text-green-300 text-xs">
-            {saving ? '...' : '✓'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setGoalsFor(match.goalsFor ?? '');
-              setGoalsAgainst(match.goalsAgainst ?? '');
-              setEditing(false);
-            }}
-            className="text-foreground/60 hover:text-foreground text-xs"
-          >
-            ✕
-          </button>
-        </span>
-      </span>
-    );
-  }
-  const hasScore = match.goalsFor != null && match.goalsAgainst != null;
-  const scoreShort = hasScore ? `${match.goalsFor} : ${match.goalsAgainst}` : null;
-  const scoreFull = formatMatchScore(match, teamLabel, opponentLabel);
   return (
-    <span className="flex items-center gap-2 flex-wrap">
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className="text-blue-400 hover:text-blue-300 text-sm px-3 py-1 rounded hover:bg-surface"
-        title={scoreFull ? `${scoreFull} – upravit` : 'Přidat skóre'}
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
       >
-        {scoreShort ?? 'Přidat skóre'}
-      </button>
-      {playerOfMatch && (
-        <span className="text-amber-400 text-sm" title="Hráč utkání (z hodnocení spoluhráčů a trenéra)">
-          ⭐ {playerOfMatch.playerName}
-        </span>
-      )}
-    </span>
+        <div className="glass-card rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-2xl border border-border max-h-[85vh] overflow-y-auto pointer-events-auto" onClick={e => e.stopPropagation()}>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <p className="text-foreground font-semibold">{match.opponent ? `vs ${match.opponent}` : 'Zápas'}</p>
+              <p className="text-foreground/50 text-sm">{formatEventDateTime(match.date, match.startTime)}</p>
+            </div>
+            <button onClick={onClose} className="text-foreground/30 hover:text-foreground text-xl leading-none">✕</button>
+          </div>
+
+          {/* Score */}
+          <div className="mb-5">
+            <p className="text-foreground/70 text-xs font-medium mb-2 uppercase tracking-wide">Skóre</p>
+            <div className="flex items-center justify-center gap-3">
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-foreground/60 text-xs">{teamLabel}</span>
+                <input type="number" min={0} value={goalsFor} onChange={e => setGoalsFor(e.target.value)}
+                  placeholder="0" autoFocus
+                  className="w-16 h-14 text-center text-2xl font-bold rounded-xl glass-input text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+              </div>
+              <span className="text-foreground/40 text-2xl font-light mt-5">:</span>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-foreground/60 text-xs">{opponentLabel}</span>
+                <input type="number" min={0} value={goalsAgainst} onChange={e => setGoalsAgainst(e.target.value)}
+                  placeholder="0"
+                  className="w-16 h-14 text-center text-2xl font-bold rounded-xl glass-input text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+              </div>
+            </div>
+          </div>
+
+          {/* Scorers + Assists */}
+          {gfCount > 0 && loaded && (
+            <div className="mb-5">
+              <p className="text-foreground/70 text-xs font-medium mb-2 uppercase tracking-wide">Střelci &amp; asistence</p>
+              <div className="space-y-2">
+                {Array.from({ length: gfCount }, (_, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-foreground/50 text-xs w-6 shrink-0 text-right">{i + 1}.</span>
+                    <Select
+                      value={scorers[i]?.playerId || '__none__'}
+                      onValueChange={v => setScorers(prev => prev.map((s, j) => j === i ? { ...s, playerId: v === '__none__' ? '' : v } : s))}
+                    >
+                      <SelectTrigger className="h-8 flex-1 min-w-0 rounded-lg glass-input text-foreground text-sm">
+                        <SelectValue placeholder="Střelec" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Střelec —</SelectItem>
+                        {players.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-foreground/30 text-xs">+</span>
+                    <Select
+                      value={assists[i]?.playerId || '__none__'}
+                      onValueChange={v => setAssists(prev => prev.map((a, j) => j === i ? { ...a, playerId: v === '__none__' ? '' : v } : a))}
+                    >
+                      <SelectTrigger className="h-8 flex-1 min-w-0 rounded-lg glass-input text-foreground text-sm">
+                        <SelectValue placeholder="Asistence" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Asistence —</SelectItem>
+                        {players.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Match Rating */}
+          <div className="mb-6">
+            <p className="text-foreground/70 text-xs font-medium mb-2 uppercase tracking-wide">Jak se zápas vyvedl?</p>
+            <div className="flex items-center gap-3">
+              <input
+                type="range" min={1} max={10} step={1} value={matchRating}
+                onChange={e => setMatchRating(Number(e.target.value))}
+                className="flex-1 h-2 rounded-full appearance-none cursor-pointer rating-range-modern"
+              />
+              <span className="text-lg w-8 text-center">{ratingInfo.emoji}</span>
+            </div>
+            <p className="text-foreground/50 text-xs mt-1 text-center">{matchRating}/10 — {ratingInfo.label}</p>
+          </div>
+
+          {/* Save */}
+          <button
+            onClick={save} disabled={saving}
+            className="w-full py-3 rounded-xl bg-[#86EF42] hover:bg-[#65d630] disabled:opacity-50 text-black font-semibold text-sm transition-colors"
+          >
+            {saving ? 'Ukládám...' : 'Uložit'}
+          </button>
+        </div>
+      </motion.div>
+    </>
   );
 }
 
@@ -924,11 +991,10 @@ function HodnoceniHracuContent() {
   const [leaderboardFilter, setLeaderboardFilter] = useState<string>('');
   const [canadianStats, setCanadianStats] = useState<CanadianEntry[]>([]);
   const [canadianFilter, setCanadianFilter] = useState<string>('');
-  const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
-  const [matchScorersData, setMatchScorersData] = useState<Record<string, { scorers: { goalOrder: number; playerId: string }[]; assists: { assistOrder: number; playerId: string }[] }>>({});
+  const [matchPopup, setMatchPopup] = useState<Match | null>(null);
+  const [showAllUpcomingMatches, setShowAllUpcomingMatches] = useState(false);
   const newPlayerInputRef = useRef<HTMLInputElement>(null);
   const icsFileInputRef = useRef<HTMLInputElement>(null);
-  const [matchScorersSaving, setMatchScorersSaving] = useState<string | null>(null);
   const [icsClubFilter, setIcsClubFilter] = useState('');
   const [icsCandidates, setIcsCandidates] = useState<IcsImportCandidate[]>([]);
   const [icsPanelOpen, setIcsPanelOpen] = useState(false);
@@ -1693,7 +1759,7 @@ function HodnoceniHracuContent() {
     if (!confirm('Opravdu smazat zápas?')) return;
     const res = await fetch(`/api/teams/${teamId}/matches/${matchId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
-      setExpandedMatchId((prev) => (prev === matchId ? null : prev));
+      if (matchPopup?.id === matchId) setMatchPopup(null);
       await fetchMatches();
     }
   };
@@ -1731,90 +1797,6 @@ function HodnoceniHracuContent() {
       }
     } finally {
       setDeletingMatches(false);
-    }
-  };
-
-  const openMatchDetail = async (m: Match) => {
-    const goalsCount = m.goalsFor ?? 0;
-    if (!matchScorersData[m.id]) {
-      const emptyScorers = Array.from({ length: goalsCount }, (_, i) => ({ goalOrder: i + 1, playerId: '' }));
-      const emptyAssists = Array.from({ length: goalsCount }, (_, i) => ({ assistOrder: i + 1, playerId: '' }));
-      setMatchScorersData((prev) => ({ ...prev, [m.id]: { scorers: emptyScorers, assists: emptyAssists } }));
-      const res = await fetch(`/api/teams/${teamId}/matches/${m.id}/scorers`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const d = await res.json();
-        const scorers = (d.scorers || []).map((s: { goalOrder: number; playerId: string }) => ({ goalOrder: s.goalOrder, playerId: s.playerId }));
-        const assists = (d.assists || []).map((a: { assistOrder: number; playerId: string }) => ({ assistOrder: a.assistOrder, playerId: a.playerId }));
-        const mergedScorers = Array.from({ length: goalsCount }, (_, i) => ({
-          goalOrder: i + 1,
-          playerId: scorers.find((s: { goalOrder: number }) => s.goalOrder === i + 1)?.playerId ?? '',
-        }));
-        const mergedAssists = Array.from({ length: goalsCount }, (_, i) => ({
-          assistOrder: i + 1,
-          playerId: assists.find((a: { assistOrder: number }) => a.assistOrder === i + 1)?.playerId ?? '',
-        }));
-        setMatchScorersData((prev) => ({ ...prev, [m.id]: { scorers: mergedScorers, assists: mergedAssists } }));
-      }
-    }
-    if (matchScorersData[m.id] && goalsCount > 0 && matchScorersData[m.id].scorers.length < goalsCount) {
-      setMatchScorersData((prev) => {
-        const data = prev[m.id];
-        const scorers = [...data.scorers];
-        const assists = [...data.assists];
-        while (scorers.length < goalsCount) scorers.push({ goalOrder: scorers.length + 1, playerId: '' });
-        while (assists.length < goalsCount) assists.push({ assistOrder: assists.length + 1, playerId: '' });
-        return { ...prev, [m.id]: { scorers, assists } };
-      });
-    }
-    setExpandedMatchId(m.id);
-  };
-
-  const toggleMatchDetail = async (m: Match) => {
-    if (expandedMatchId === m.id) {
-      setExpandedMatchId(null);
-      return;
-    }
-    await openMatchDetail(m);
-  };
-
-  const setMatchScorer = (matchId: string, goalOrder: number, playerId: string) => {
-    setMatchScorersData((prev) => {
-      const data = prev[matchId];
-      if (!data) return prev;
-      const scorers = data.scorers.map((s) => (s.goalOrder === goalOrder ? { ...s, playerId } : s));
-      return { ...prev, [matchId]: { ...data, scorers } };
-    });
-  };
-
-  const setMatchAssist = (matchId: string, assistOrder: number, playerId: string) => {
-    setMatchScorersData((prev) => {
-      const data = prev[matchId];
-      if (!data) return prev;
-      const assists = data.assists.map((a) => (a.assistOrder === assistOrder ? { ...a, playerId } : a));
-      return { ...prev, [matchId]: { ...data, assists } };
-    });
-  };
-
-  const saveMatchScorers = async (matchId: string) => {
-    const data = matchScorersData[matchId];
-    if (!data || !teamId || !token) return;
-    setMatchScorersSaving(matchId);
-    try {
-      const scorers = data.scorers.filter((s) => s.playerId).map((s) => ({ goalOrder: s.goalOrder, playerId: s.playerId }));
-      const assists = data.assists.filter((a) => a.playerId).map((a) => ({ assistOrder: a.assistOrder, playerId: a.playerId }));
-      const res = await fetch(`/api/teams/${teamId}/matches/${matchId}/scorers`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scorers, assists }),
-      });
-      if (res.ok) {
-        setMatchScorersData((prev) => ({ ...prev, [matchId]: { ...data, scorers, assists } }));
-      } else {
-        const err = await res.json().catch(() => ({}));
-        alert(err?.error || 'Chyba při ukládání');
-      }
-    } finally {
-      setMatchScorersSaving(null);
     }
   };
 
@@ -1967,6 +1949,22 @@ function HodnoceniHracuContent() {
       className="min-h-screen animated-background py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8 relative"
       style={teamBackgroundColor ? { background: teamBackgroundColor } : undefined}
     >
+      {/* Match Result Popup */}
+      <AnimatePresence>
+        {matchPopup && (
+          <MatchResultPopup
+            match={matchPopup}
+            teamId={teamId!}
+            token={token!}
+            teamLabel={teamName || 'Náš tým'}
+            opponentLabel={matchPopup.opponent || 'Soupeř'}
+            players={players}
+            onSaved={fetchMatches}
+            onClose={() => setMatchPopup(null)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Modální okno pro potvrzení mazání hráče */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm" onClick={() => setDeleteConfirm(null)}>
@@ -2024,7 +2022,7 @@ function HodnoceniHracuContent() {
       </div>
 
       <MotionPage className="w-full max-w-7xl mx-auto relative z-10 pt-12 sm:pt-14">
-        <h1 className="text-xl sm:text-2xl font-semibold text-foreground mb-4 sm:mb-6">Hodnocení hráčů</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold text-foreground mb-4 sm:mb-6">Týmová zóna</h1>
 
         <Reorder.Group
           axis="x"
@@ -2197,9 +2195,9 @@ function HodnoceniHracuContent() {
                                                 type="button"
                                                 onClick={() => openUcastModal(ev)}
                                                 className="text-blue-400 hover:text-blue-300 text-sm"
-                                                title="Odkaz pro hráče + přehled, kdo se hlásí (do půlnoci před událostí)"
+                                                title="Odkaz pro hráče + přehled, kdo se hlásí (do hodiny před událostí)"
                                               >
-                                                Účast
+                                                Účast ano/ne
                                               </button>
                                             </div>
                                           </div>
@@ -2219,7 +2217,7 @@ function HodnoceniHracuContent() {
                                   {upcomingMatches.length > 0 && (
                                     <div>
                                       <h3 className="text-foreground/70 text-sm font-medium mb-2">Zápasy</h3>
-                                      {upcomingMatches.slice(0, 3).map((m) => (
+                                      {(showAllUpcomingMatches ? upcomingMatches : upcomingMatches.slice(0, 3)).map((m) => (
                                         <div
                                           key={m.id}
                                           className="py-2 px-3 rounded-lg bg-surface border border-border mb-2 text-foreground"
@@ -2228,7 +2226,13 @@ function HodnoceniHracuContent() {
                                         </div>
                                       ))}
                                       {upcomingMatches.length > 3 && (
-                                        <p className="text-foreground/50 text-sm mt-1">+ {upcomingMatches.length - 3} dalších</p>
+                                        <button
+                                          type="button"
+                                          onClick={() => setShowAllUpcomingMatches(p => !p)}
+                                          className="text-foreground/50 hover:text-foreground text-sm mt-1 transition-colors"
+                                        >
+                                          {showAllUpcomingMatches ? 'Zobrazit méně ↑' : `+ ${upcomingMatches.length - 3} dalších`}
+                                        </button>
                                       )}
                                     </div>
                                   )}
@@ -2361,18 +2365,7 @@ function HodnoceniHracuContent() {
         {tab === 'manage' && (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
             <div className="glass-card rounded-2xl p-4 sm:p-6">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <h2 className="text-lg font-semibold text-foreground">Hráči týmu ({players.length})</h2>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTimeout(() => newPlayerInputRef.current?.focus(), 50);
-                  }}
-                  className="shrink-0 px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
-                >
-                  Přidat hráče
-                </button>
-              </div>
+              <h2 className="text-lg font-semibold text-foreground mb-3">Hráči týmu ({players.length})</h2>
 
               <>
               <div className="mb-4">
@@ -2681,134 +2674,44 @@ function HodnoceniHracuContent() {
               </div>
               <ul className="space-y-2">
                 {filteredMatches.map((m) => {
-                  const goalsFor = m.goalsFor ?? 0;
-                  const isExpanded = expandedMatchId === m.id;
-                  const scorersData = matchScorersData[m.id];
                   const hasScore = m.goalsFor != null && m.goalsAgainst != null;
-                  const resultDetailText = hasScore
-                    ? `${teamName || 'Náš tým'} ${m.goalsFor} : ${m.goalsAgainst} ${m.opponent || 'Soupeř'}`
-                    : (!m.goalsFor && !m.goalsAgainst) && m.result
-                      ? m.result
-                      : null;
+                  const scoreText = hasScore ? `${m.goalsFor} : ${m.goalsAgainst}` : null;
+                  const ratingInfo = m.matchRating ? MATCH_RATING_LABELS[m.matchRating] : null;
                   return (
                     <li key={m.id} className={`border-b border-border transition-all duration-500 ${recentlyImportedMatchIds.includes(m.id) ? 'match-imported-flash' : ''}`}>
                       <div
                         className="flex justify-between items-center py-2 gap-2 cursor-pointer hover:bg-surface rounded-lg -mx-1 px-1"
-                        onClick={() => toggleMatchDetail(m)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            void toggleMatchDetail(m);
-                          }
-                        }}
+                        onClick={() => setMatchPopup(m)}
                         role="button"
                         tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMatchPopup(m); } }}
                       >
                         <span className="text-foreground min-w-0">
                           <span className="block">
-                            <span className="inline-block w-5 text-foreground/60">
-                              {isExpanded ? '▼' : '▶'}
-                            </span>
                             {formatEventDateTime(m.date, m.startTime)}
                             {m.opponent && ` vs ${m.opponent}`}
+                            {scoreText && <span className="ml-2 text-blue-400 font-semibold">{scoreText}</span>}
                           </span>
-                          {resultDetailText && (
-                            <span className="block mt-1 text-blue-400 font-semibold whitespace-nowrap pl-5">
-                              {resultDetailText}
+                          {(m.playerOfMatch || ratingInfo) && (
+                            <span className="flex items-center gap-3 mt-0.5 pl-0">
+                              {m.playerOfMatch && (
+                                <span className="text-amber-400 text-sm">⭐ {m.playerOfMatch.playerName}</span>
+                              )}
+                              {ratingInfo && (
+                                <span className="text-foreground/50 text-sm">{ratingInfo.emoji} {ratingInfo.label}</span>
+                              )}
                             </span>
                           )}
                         </span>
                         <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => openMatchDetail(m)}
-                            className="text-xs text-foreground/70 hover:text-foreground underline underline-offset-2"
-                          >
-                            Vyplnit skóre
+                          <button type="button" onClick={() => setMatchPopup(m)} className="text-blue-400 hover:text-blue-300 text-sm px-2 py-1">
+                            {hasScore ? 'Upravit' : 'Vyplnit skóre'}
                           </button>
-                          <MatchResultEdit
-                            match={m}
-                            teamId={teamId!}
-                            token={token!}
-                            teamLabel={teamName || 'Náš tým'}
-                            opponentLabel={m.opponent || 'Soupeř'}
-                            playerOfMatch={m.playerOfMatch}
-                            onUpdated={fetchMatches}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => deleteMatch(m.id)}
-                            className="text-red-400 hover:text-red-300 text-sm"
-                          >
+                          <button type="button" onClick={() => deleteMatch(m.id)} className="text-red-400 hover:text-red-300 text-sm">
                             Smazat
                           </button>
                         </div>
                       </div>
-                      {isExpanded && (
-                        <div className="pb-4 pl-6 pr-2 space-y-3" onClick={(e) => e.stopPropagation()}>
-                          <p className="text-foreground/70 text-sm font-medium">Skóre zápasu</p>
-                          <MatchResultEdit
-                            match={m}
-                            teamId={teamId!}
-                            token={token!}
-                            teamLabel={teamName || 'Náš tým'}
-                            opponentLabel={m.opponent || 'Soupeř'}
-                            playerOfMatch={m.playerOfMatch}
-                            onUpdated={fetchMatches}
-                          />
-                          {goalsFor > 0 && scorersData ? (
-                            <>
-                              <p className="text-foreground/70 text-sm font-medium">Střelci branek a asistence</p>
-                              {scorersData.scorers.map((_, i) => (
-                                <div key={i} className="flex flex-wrap items-center gap-2">
-                                  <span className="text-foreground/60 text-sm w-20">Branka {i + 1}:</span>
-                                  <Select
-                                    value={scorersData.scorers[i]?.playerId ?? '__none__'}
-                                    onValueChange={(value) => setMatchScorer(m.id, i + 1, value === '__none__' ? '' : value)}
-                                  >
-                                    <SelectTrigger className="h-8 min-w-[140px] rounded-lg glass-input text-foreground text-sm focus:ring-2 focus:ring-blue-400">
-                                      <SelectValue placeholder="— Střelec —" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="__none__">— Střelec —</SelectItem>
-                                      {players.map((p) => (
-                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <span className="text-foreground/50">+</span>
-                                  <Select
-                                    value={scorersData.assists[i]?.playerId ?? '__none__'}
-                                    onValueChange={(value) => setMatchAssist(m.id, i + 1, value === '__none__' ? '' : value)}
-                                  >
-                                    <SelectTrigger className="h-8 min-w-[140px] rounded-lg glass-input text-foreground text-sm focus:ring-2 focus:ring-blue-400">
-                                      <SelectValue placeholder="— Asistence —" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="__none__">— Asistence —</SelectItem>
-                                      {players.map((p) => (
-                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              ))}
-                              <button
-                                type="button"
-                                onClick={() => saveMatchScorers(m.id)}
-                                disabled={matchScorersSaving === m.id}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
-                              >
-                                {matchScorersSaving === m.id ? 'Ukládám...' : 'Uložit'}
-                              </button>
-                            </>
-                          ) : (
-                            <p className="text-foreground/60 text-sm">
-                              Nejprve ulož skóre, pak doplníš střelce a asistence.
-                            </p>
-                          )}
-                        </div>
-                      )}
                     </li>
                   );
                 })}
@@ -3198,7 +3101,7 @@ function HodnoceniHracuContent() {
             <div className="glass-card rounded-2xl p-4 sm:p-6">
               <h2 className="text-base sm:text-lg font-semibold text-foreground mb-3">Kalendář událostí</h2>
               <p className="text-foreground/60 text-sm mb-4">
-                Přidejte tréninky a zápasy. „Účast" = odkaz pro hráče, kteří se do půlnoci před událostí sami ohlásí, zda dorazí. „Docházka" = po události finálně zaznamenáte, kdo skutečně přišel (jednorázové odeslání, nelze měnit).
+                Přidejte tréninky a zápasy. „Účast ano/ne" = odkaz pro hráče, kteří se do hodiny před událostí sami ohlásí, zda dorazí. „Docházka" = po události finálně zaznamenáte, kdo skutečně přišel (jednorázové odeslání, nelze měnit).
               </p>
               <form onSubmit={addEvent} className="flex flex-col gap-3 mb-6">
                 <div className="flex flex-wrap items-center gap-2">
@@ -3341,9 +3244,9 @@ function HodnoceniHracuContent() {
                             type="button"
                             onClick={() => openUcastModal(ev)}
                             className="text-blue-400 hover:text-blue-300 text-sm px-2 py-1"
-                            title="Odkaz pro hráče + přehled, kdo se hlásí (do půlnoci před událostí)"
+                            title="Odkaz pro hráče + přehled, kdo se hlásí (do hodiny před událostí)"
                           >
-                            Účast
+                            Účast ano/ne
                           </button>
                           <button
                             type="button"
@@ -3533,7 +3436,7 @@ function HodnoceniHracuContent() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
                     </button>
-                    {!isUcastClosed(ucastModal.date) && !ucastModalFinalized && (
+                    {!isUcastClosed(ucastModal.date, ucastModal.startTime) && !ucastModalFinalized && (
                       <a
                         href={`${typeof window !== 'undefined' ? window.location.origin : ''}/udalost/${ucastModal.shareToken}`}
                         target="_blank"
@@ -3571,8 +3474,8 @@ function HodnoceniHracuContent() {
               ) : (
                 <p className="text-amber-400/90 text-sm mb-4">Událost nemá odkaz. Nejprve uložte událost s odkazem pro účast.</p>
               )}
-              {isUcastClosed(ucastModal.date) && !ucastModalFinalized && (
-                <p className="text-amber-400 text-sm mb-4">Odpovědi se uzavírají den před událostí do půlnoci. Účast již nelze měnit.</p>
+              {isUcastClosed(ucastModal.date, ucastModal.startTime) && !ucastModalFinalized && (
+                <p className="text-amber-400 text-sm mb-4">Odpovědi se uzavírají hodinu před začátkem události. Účast již nelze měnit.</p>
               )}
               {ucastModalFinalized && (
                 <p className="text-[#1f3768]/90 dark:text-accent/90 text-sm mb-4">Docházka byla odeslána. Níže finální přehled zúčastněných.</p>
