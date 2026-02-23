@@ -2119,12 +2119,14 @@ function HodnoceniHracuContent() {
                         const today = new Date().toISOString().slice(0, 10);
                         const pastMatches = matches.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date));
                         const lastMatch = pastMatches[0];
-                        if (!lastMatch) return null;
-                        const scoreStr =
-                          lastMatch.goalsFor != null && lastMatch.goalsAgainst != null
+                        const nextMatch = matches.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
+                        if (!lastMatch && !nextMatch) return null;
+                        const scoreStr = lastMatch
+                          ? (lastMatch.goalsFor != null && lastMatch.goalsAgainst != null
                             ? `${teamName || 'Náš tým'} ${lastMatch.goalsFor} : ${lastMatch.goalsAgainst} ${lastMatch.opponent || 'Soupeř'}`
-                            : lastMatch.result || '—';
-                        const pom = lastMatch.playerOfMatch;
+                            : lastMatch.result || '—')
+                          : '';
+                        const pom = lastMatch?.playerOfMatch;
                         return (
                           <SortableOverviewCard
                             key={layoutItem.id}
@@ -2134,16 +2136,28 @@ function HodnoceniHracuContent() {
                             onSizeChange={handleOverviewSizeChange}
                           >
                             <div className="glass-card group relative overflow-visible rounded-2xl p-4 sm:p-6 lg:pr-44 xl:pr-56 border border-amber-500/30 bg-amber-500/5">
-                              <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 sm:mb-3">Poslední odehraný zápas</h2>
                               <div className="space-y-1 relative z-10">
-                                <p className="text-foreground font-medium">
-                                  {formatEventDateTime(lastMatch.date, lastMatch.startTime)} vs {lastMatch.opponent || 'soupeř'}
-                                </p>
-                                <p className="text-[#1f3768] dark:text-accent font-semibold text-lg">{scoreStr}</p>
-                                {pom && (
-                                  <p className="text-amber-400 font-medium flex items-center gap-1.5 mt-2">
-                                    <span aria-hidden>⭐</span> Hráč utkání: {pom.playerName}
-                                  </p>
+                                {lastMatch && (
+                                  <>
+                                    <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 sm:mb-3">Poslední odehraný zápas</h2>
+                                    <p className="text-foreground font-medium">
+                                      {formatEventDateTime(lastMatch.date, lastMatch.startTime)} vs {lastMatch.opponent || 'soupeř'}
+                                    </p>
+                                    <p className="text-[#1f3768] dark:text-accent font-semibold text-lg">{scoreStr}</p>
+                                    {pom && (
+                                      <p className="text-amber-400 font-medium flex items-center gap-1.5 mt-2">
+                                        <span aria-hidden>⭐</span> Hráč utkání: {pom.playerName}
+                                      </p>
+                                    )}
+                                  </>
+                                )}
+                                {nextMatch && (
+                                  <div className={lastMatch ? 'border-t border-amber-500/20 mt-3 pt-3' : ''}>
+                                    <p className="text-foreground/50 text-xs uppercase tracking-wider mb-1">Příští zápas</p>
+                                    <p className="text-foreground font-medium">
+                                      {formatEventDateTime(nextMatch.date, nextMatch.startTime)} vs {nextMatch.opponent || 'soupeř'}
+                                    </p>
+                                  </div>
                                 )}
                               </div>
 
