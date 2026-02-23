@@ -287,7 +287,8 @@ export default function DashboardPage() {
               </Link>
             </MotionItem>
 
-            <MotionItem delay={0.04}>
+            {/* Desktop — plně klikatelná karta */}
+            <MotionItem delay={0.04} className="hidden sm:block">
               <Link href="/dashboard/tymovy-web" className="block h-full">
                 <motion.div
                   className="relative overflow-hidden rounded-2xl p-8 sm:p-10 group cursor-pointer h-full min-h-[340px] sm:min-h-[400px]"
@@ -314,6 +315,34 @@ export default function DashboardPage() {
                   </div>
                 </motion.div>
               </Link>
+            </MotionItem>
+            {/* Mobil — neaktivní karta */}
+            <MotionItem delay={0.04} className="sm:hidden">
+              <div
+                className="relative overflow-hidden rounded-2xl p-8 h-full min-h-[340px] opacity-50 pointer-events-none"
+                style={{
+                  background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 40%, #6366F1 100%)',
+                }}
+              >
+                <div className="flex flex-col justify-between h-full relative z-10">
+                  <div>
+                    <h2 className="text-4xl font-black text-white leading-[0.9] tracking-tight mb-3">
+                      Týmový<br />web
+                    </h2>
+                    <p className="text-white/70 text-sm">
+                      Vytvořte si jednoduchou webovku pro váš tým
+                    </p>
+                  </div>
+                  <div className="mt-4">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/30 text-white/80 text-xs font-medium">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a9 9 0 01-18 0V5.25" />
+                      </svg>
+                      Dostupné na počítači
+                    </span>
+                  </div>
+                </div>
+              </div>
             </MotionItem>
           </div>
 

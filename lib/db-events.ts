@@ -6,7 +6,7 @@ if (!client) {
   console.warn('Supabase není nakonfigurován. Nastavte NEXT_PUBLIC_SUPABASE_URL a (NEXT_PUBLIC_SUPABASE_ANON_KEY nebo SUPABASE_SERVICE_ROLE_KEY) v .env.local nebo v proměnných prostředí Vercelu.');
 }
 
-export type EventType = 'training' | 'friendly_match' | 'competitive_match';
+export type EventType = 'training' | 'friendly_match' | 'competitive_match' | (string & {});
 
 export interface Event {
   id: string;

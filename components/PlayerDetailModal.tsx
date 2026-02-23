@@ -49,6 +49,7 @@ export default function PlayerDetailModal({
   const [photoPreview, setPhotoPreview] = useState<string | null>(player.photoUrl ?? null);
   const [uploading, setUploading] = useState(false);
   const [deletingPhoto, setDeletingPhoto] = useState(false);
+  const [deletePhotoConfirm, setDeletePhotoConfirm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deletingPlayer, setDeletingPlayer] = useState(false);
 
@@ -139,6 +140,15 @@ export default function PlayerDetailModal({
     setCropMode(false);
     if (rawImageSrc) URL.revokeObjectURL(rawImageSrc);
     setRawImageSrc(null);
+  };
+
+  const handleEditExistingPhoto = () => {
+    if (!photoPreview) return;
+    setRawImageSrc(photoPreview);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+    setCropMode(true);
   };
 
   const handleDeletePhoto = async () => {
@@ -278,6 +288,12 @@ export default function PlayerDetailModal({
                   )}
                 </button>
               </div>
+              <button
+                onClick={() => { setCropMode(false); fileInputRef.current?.click(); }}
+                className="mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors self-center"
+              >
+                Nahrát jinou fotku
+              </button>
             </div>
           ) : (
             /* ===== NORMAL DETAIL VIEW ===== */
@@ -296,7 +312,7 @@ export default function PlayerDetailModal({
               <div className="flex flex-col items-center mb-5">
                 <div
                   className="relative w-28 h-28 rounded-full overflow-hidden bg-surface border-2 border-border mb-3 cursor-pointer group"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => photoPreview ? handleEditExistingPhoto() : fileInputRef.current?.click()}
                 >
                   {photoPreview ? (
                     <img
@@ -312,11 +328,23 @@ export default function PlayerDetailModal({
                     </div>
                   )}
                   {/* Hover overlay */}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-                    </svg>
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
+                    {photoPreview ? (
+                      <>
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                        </svg>
+                        <span className="text-white text-[10px] font-medium">Upravit</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+                        </svg>
+                        <span className="text-white text-[10px] font-medium">Nahrát</span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <input
@@ -326,23 +354,33 @@ export default function PlayerDetailModal({
                   className="hidden"
                   onChange={handleFileSelect}
                 />
-                <div className="flex gap-3 text-sm">
+                {photoPreview && !deletePhotoConfirm && (
                   <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-blue-400 hover:text-blue-300 transition-colors"
+                    onClick={() => setDeletePhotoConfirm(true)}
+                    disabled={deletingPhoto}
+                    className="text-red-400 hover:text-red-300 transition-colors text-xs"
                   >
-                    Nahrát fotku
+                    Smazat fotku
                   </button>
-                  {photoPreview && (
+                )}
+                {deletePhotoConfirm && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-foreground/60">Opravdu smazat?</span>
                     <button
-                      onClick={handleDeletePhoto}
+                      onClick={() => { setDeletePhotoConfirm(false); handleDeletePhoto(); }}
                       disabled={deletingPhoto}
-                      className="text-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
+                      className="text-red-400 hover:text-red-300 transition-colors font-medium"
                     >
-                      {deletingPhoto ? 'Mažu...' : 'Smazat fotku'}
+                      {deletingPhoto ? 'Mažu...' : 'Ano'}
                     </button>
-                  )}
-                </div>
+                    <button
+                      onClick={() => setDeletePhotoConfirm(false)}
+                      className="text-foreground/50 hover:text-foreground/70 transition-colors"
+                    >
+                      Ne
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Player name */}

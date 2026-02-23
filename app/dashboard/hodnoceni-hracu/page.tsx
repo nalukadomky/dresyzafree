@@ -9,6 +9,8 @@ import PlayerDetailModal from '@/components/PlayerDetailModal';
 import TacticsBoard from '@/components/TacticsBoard';
 import ThemeToggle from '@/components/ThemeToggle';
 import { MotionPage } from '@/components/Motion';
+import { getCroppedImage, resizeImageFile } from '@/lib/image-utils';
+import Cropper, { type Area } from 'react-easy-crop';
 import { Reorder, useDragControls, AnimatePresence, motion, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import {
   Select,
@@ -19,23 +21,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { ChevronDown } from 'lucide-react';
 import { DatePicker } from '@/components/ui/datepicker';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm-dialog';
+import confetti from 'canvas-confetti';
 
 // --- Time input component (keyboard-friendly HH:MM) ---
 function TimeInput({ value, onChange, className, required }: { value: string; onChange: (v: string) => void; className?: string; required?: boolean }) {
   const hRef = useRef<HTMLInputElement>(null);
   const mRef = useRef<HTMLInputElement>(null);
+  const [localHH, setLocalHH] = useState('');
+  const [localMM, setLocalMM] = useState('');
+  const lastCommitted = useRef(value);
 
-  const parts = value ? value.split(':') : ['', ''];
-  const hh = parts[0] || '';
-  const mm = parts[1] || '';
+  // Sync from parent when value changes externally (e.g. auto-fill from match)
+  useEffect(() => {
+    if (value !== lastCommitted.current) {
+      const parts = value ? value.split(':') : ['', ''];
+      setLocalHH(parts[0] || '');
+      setLocalMM(parts[1] || '');
+      lastCommitted.current = value;
+    }
+  }, [value]);
 
-  const update = (h: string, m: string) => {
-    if (h && m) onChange(`${h.padStart(2, '0')}:${m.padStart(2, '0')}`);
-    else if (!h && !m) onChange('');
-    else onChange(`${h || ''}:${m || ''}`);
+  const commit = (h: string, m: string) => {
+    let result: string;
+    if (h && m) result = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+    else if (!h && !m) result = '';
+    else result = `${h || ''}:${m || ''}`;
+    lastCommitted.current = result;
+    onChange(result);
   };
 
   const handleHourChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,8 +60,11 @@ function TimeInput({ value, onChange, className, required }: { value: string; on
     if (v.length > 2) v = v.slice(0, 2);
     const n = parseInt(v, 10);
     if (v.length > 0 && n > 23) v = '23';
-    update(v, mm);
-    if (v.length === 2) mRef.current?.focus();
+    setLocalHH(v);
+    if (v.length === 2) {
+      commit(v, localMM);
+      mRef.current?.focus();
+    }
   };
 
   const handleMinuteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,11 +72,17 @@ function TimeInput({ value, onChange, className, required }: { value: string; on
     if (v.length > 2) v = v.slice(0, 2);
     const n = parseInt(v, 10);
     if (v.length > 0 && n > 59) v = '59';
-    update(hh, v);
+    setLocalMM(v);
+    if (v.length === 2) {
+      commit(localHH, v);
+    }
   };
 
+  const handleHourBlur = () => commit(localHH, localMM);
+  const handleMinuteBlur = () => commit(localHH, localMM);
+
   const handleMinuteKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !mm) {
+    if (e.key === 'Backspace' && !localMM) {
       e.preventDefault();
       hRef.current?.focus();
     }
@@ -72,8 +98,9 @@ function TimeInput({ value, onChange, className, required }: { value: string; on
         type="text"
         inputMode="numeric"
         maxLength={2}
-        value={hh}
+        value={localHH}
         onChange={handleHourChange}
+        onBlur={handleHourBlur}
         placeholder="HH"
         className="w-7 bg-transparent text-foreground text-sm text-center outline-none placeholder:text-white/30"
         required={required}
@@ -84,8 +111,9 @@ function TimeInput({ value, onChange, className, required }: { value: string; on
         type="text"
         inputMode="numeric"
         maxLength={2}
-        value={mm}
+        value={localMM}
         onChange={handleMinuteChange}
+        onBlur={handleMinuteBlur}
         onKeyDown={handleMinuteKeyDown}
         placeholder="MM"
         className="w-7 bg-transparent text-foreground text-sm text-center outline-none placeholder:text-white/30"
@@ -232,13 +260,13 @@ interface LeaderboardEntry {
   voteCount: number;
 }
 
-type EventType = 'training' | 'friendly_match' | 'competitive_match';
+type EventType = 'training' | 'friendly_match' | 'competitive_match' | 'custom';
 
 interface Event {
   id: string;
   teamId: string;
   date: string;
-  eventType: EventType;
+  eventType: string;
   location?: string;
   opponent?: string;
   startTime?: string;
@@ -841,10 +869,11 @@ function MatchResultPopup({
   );
 }
 
-const EVENT_TYPE_LABELS: Record<EventType, string> = {
+const EVENT_TYPE_LABELS: Record<string, string> = {
   training: 'Trénink',
   friendly_match: 'Zápas přátelský',
   competitive_match: 'Zápas mistrovský',
+  custom: 'Vlastní',
 };
 
 /** Vždy zobrazí datum a přesný čas začátku události/tréninku/zápasu. */
@@ -978,6 +1007,14 @@ function HodnoceniHracuContent() {
   const [newMatchStartTime, setNewMatchStartTime] = useState('');
   const [newMatchOpponent, setNewMatchOpponent] = useState('');
   const [addingPlayer, setAddingPlayer] = useState(false);
+  const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
+  const [addPlayerPhoto, setAddPlayerPhoto] = useState<File | null>(null);
+  const [addPlayerPhotoPreview, setAddPlayerPhotoPreview] = useState<string | null>(null);
+  const [addPlayerCropMode, setAddPlayerCropMode] = useState(false);
+  const [addPlayerRawSrc, setAddPlayerRawSrc] = useState<string | null>(null);
+  const [addPlayerCrop, setAddPlayerCrop] = useState({ x: 0, y: 0 });
+  const [addPlayerZoom, setAddPlayerZoom] = useState(1);
+  const [addPlayerCroppedArea, setAddPlayerCroppedArea] = useState<Area | null>(null);
   const [addingMatch, setAddingMatch] = useState(false);
 
   const [voterId, setVoterId] = useState('');
@@ -1001,6 +1038,7 @@ function HodnoceniHracuContent() {
   const [showAllUpcomingMatches, setShowAllUpcomingMatches] = useState(false);
   const [playerDetailModal, setPlayerDetailModal] = useState<Player | null>(null);
   const newPlayerInputRef = useRef<HTMLInputElement>(null);
+  const addPlayerFileInputRef = useRef<HTMLInputElement>(null);
   const icsFileInputRef = useRef<HTMLInputElement>(null);
   const [icsClubFilter, setIcsClubFilter] = useState('');
   const [icsCandidates, setIcsCandidates] = useState<IcsImportCandidate[]>([]);
@@ -1034,6 +1072,8 @@ function HodnoceniHracuContent() {
   const [newEventLocation, setNewEventLocation] = useState('');
   const [newEventOpponent, setNewEventOpponent] = useState('');
   const [newEventNote, setNewEventNote] = useState('');
+  const [newEventCustomName, setNewEventCustomName] = useState('');
+  const [eventTypeOpen, setEventTypeOpen] = useState(false);
   const [addingEvent, setAddingEvent] = useState(false);
   const [attendanceStats, setAttendanceStats] = useState<AttendanceStat[]>([]);
   const [showAllFormPlayers, setShowAllFormPlayers] = useState(true);
@@ -1299,14 +1339,19 @@ function HodnoceniHracuContent() {
       toast.warning('Místo konání je povinné');
       return;
     }
+    if (newEventType === 'custom' && !newEventCustomName.trim()) {
+      toast.warning('Zadejte název vlastní události');
+      return;
+    }
     setAddingEvent(true);
+    const resolvedEventType = newEventType === 'custom' ? newEventCustomName.trim() : newEventType;
     try {
       const res = await fetch(`/api/teams/${teamId}/events`, {
         method: 'POST',
         headers: headers(),
         body: JSON.stringify({
           date: newEventDate,
-          eventType: newEventType,
+          eventType: resolvedEventType,
           location,
           opponent: (newEventType !== 'training' ? newEventOpponent : undefined)?.trim() || undefined,
           startTime: time,
@@ -1325,6 +1370,8 @@ function HodnoceniHracuContent() {
         setNewEventLocation('');
         setNewEventOpponent('');
         setNewEventNote('');
+        setNewEventCustomName('');
+        setNewEventType('training');
         await fetchEvents();
         await fetchAttendanceStats();
       } else {
@@ -1508,6 +1555,45 @@ function HodnoceniHracuContent() {
     }
   };
 
+  const handleAddPlayerPhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (addPlayerRawSrc) URL.revokeObjectURL(addPlayerRawSrc);
+    setAddPlayerRawSrc(URL.createObjectURL(file));
+    setAddPlayerCrop({ x: 0, y: 0 });
+    setAddPlayerZoom(1);
+    setAddPlayerCroppedArea(null);
+    setAddPlayerCropMode(true);
+    e.target.value = '';
+  };
+
+  const handleAddPlayerCropConfirm = async () => {
+    if (!addPlayerRawSrc || !addPlayerCroppedArea) return;
+    const croppedBlob = await getCroppedImage(addPlayerRawSrc, addPlayerCroppedArea);
+    const croppedFile = new File([croppedBlob], 'photo.jpg', { type: 'image/jpeg' });
+    if (addPlayerPhotoPreview) URL.revokeObjectURL(addPlayerPhotoPreview);
+    setAddPlayerPhoto(croppedFile);
+    setAddPlayerPhotoPreview(URL.createObjectURL(croppedBlob));
+    URL.revokeObjectURL(addPlayerRawSrc);
+    setAddPlayerRawSrc(null);
+    setAddPlayerCropMode(false);
+  };
+
+  const handleAddPlayerCropCancel = () => {
+    if (addPlayerRawSrc) URL.revokeObjectURL(addPlayerRawSrc);
+    setAddPlayerRawSrc(null);
+    setAddPlayerCropMode(false);
+  };
+
+  const clearAddPlayerPhoto = () => {
+    if (addPlayerPhotoPreview) URL.revokeObjectURL(addPlayerPhotoPreview);
+    if (addPlayerRawSrc) URL.revokeObjectURL(addPlayerRawSrc);
+    setAddPlayerPhoto(null);
+    setAddPlayerPhotoPreview(null);
+    setAddPlayerRawSrc(null);
+    setAddPlayerCropMode(false);
+  };
+
   const addPlayer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPlayerName.trim() || !teamId || !token) return;
@@ -1524,8 +1610,26 @@ function HodnoceniHracuContent() {
         body: JSON.stringify({ name: newPlayerName.trim(), jerseyNumber }),
       });
       if (res.ok) {
+        const { player: newPlayer } = await res.json();
+        // Upload photo if selected
+        if (addPlayerPhoto && newPlayer?.id) {
+          try {
+            const resized = await resizeImageFile(addPlayerPhoto);
+            const fd = new FormData();
+            fd.append('photo', resized, 'photo.jpg');
+            await fetch(`/api/teams/${teamId}/players/${newPlayer.id}/photo`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+              body: fd,
+            });
+          } catch {
+            toast.warning('Hráč vytvořen, ale fotka se nepodařila nahrát.');
+          }
+        }
         setNewPlayerName('');
         setNewPlayerJerseyNumber('');
+        clearAddPlayerPhoto();
+        setShowAddPlayerModal(false);
         await fetchPlayers();
       } else {
         const d = await res.json();
@@ -1814,7 +1918,7 @@ function HodnoceniHracuContent() {
     }
   };
 
-  const otherPlayers = voterId ? players.filter((p) => p.id !== voterId) : [];
+  const otherPlayers = voterId ? players.filter((p) => p.id !== voterId && p.id !== coachPlayerId) : [];
 
   useEffect(() => {
     if (!teamId || !token || !voterId || !matchId) {
@@ -2204,7 +2308,7 @@ function HodnoceniHracuContent() {
                                             className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 rounded-lg bg-surface border border-border mb-2 gap-2"
                                           >
                                             <span className="text-foreground text-sm sm:text-base min-w-0">
-                                              {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType]}
+                                              {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}
                                               {ev.location && ` • ${ev.location}`}
                                               {ev.opponent && ev.opponent !== ev.location && ` vs ${ev.opponent}`}
                                             </span>
@@ -2413,30 +2517,16 @@ function HodnoceniHracuContent() {
                 {savingCoach && <span className="text-foreground/50 text-sm ml-2">Ukládám...</span>}
               </div>
 
-              <form onSubmit={addPlayer} className="flex gap-2 mb-4">
-                <input
-                  ref={newPlayerInputRef}
-                  type="text"
-                  value={newPlayerName}
-                  onChange={(e) => setNewPlayerName(e.target.value)}
-                  placeholder="Jméno hráče"
-                  className="flex-1 px-4 py-2 rounded-lg glass-input text-foreground placeholder-white/50"
-                  required
-                />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={newPlayerJerseyNumber}
-                  onChange={(e) => setNewPlayerJerseyNumber(e.target.value.replace(/\D/g, '').slice(0, 2))}
-                  placeholder="#"
-                  className="w-20 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-center"
-                  title="Číslo dresu (1-99)"
-                />
-                <button type="submit" disabled={addingPlayer} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium disabled:opacity-50">
-                  {addingPlayer ? '...' : 'Přidat'}
-                </button>
-              </form>
+              <button
+                type="button"
+                onClick={() => setShowAddPlayerModal(true)}
+                className="w-full mb-4 px-4 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-medium flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Přidat hráče
+              </button>
               <ul className="space-y-1">
                 {players.map((p) => (
                   <li
@@ -2726,23 +2816,14 @@ function HodnoceniHracuContent() {
 
         {tab === 'vote' && (
           <form onSubmit={submitVote}>
-            <div className="flex flex-col lg:flex-row lg:gap-6 gap-4">
-              {/* Left panel — voter & match selection */}
-              <div className="glass-card rounded-2xl p-4 sm:p-6 lg:w-80 lg:shrink-0 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:gap-8 gap-4">
+              {/* Left column — info & selects */}
+              <div className="lg:w-72 lg:shrink-0 space-y-4">
                 <div>
-                  <h2 className="text-base sm:text-lg font-semibold text-foreground mb-1">Ohodnoť spoluhráče</h2>
-                  <p className="text-foreground/60 text-sm">
-                    Vyber sebe, zvol zápas a hodnoť od 0 do 10.
-                  </p>
+                  <h2 className="text-lg font-semibold text-foreground mb-1">Ohodnoť spoluhráče</h2>
+                  <p className="text-foreground/60 text-sm">Vyber sebe, zvol zápas a hodnoť od 0 do 10.</p>
                 </div>
-                {voteSubmittedSuccess && (
-                  <div className="p-3 rounded-xl bg-accent/20 border border-accent/50 flex items-center gap-2">
-                    <span className="text-[#1f3768] dark:text-accent-dark text-xl">✓</span>
-                    <p className="text-[#1f3768] dark:text-accent-light font-medium text-sm">Hotovo! Tvůj hlas je v systému.</p>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-foreground font-medium mb-2 text-sm">Kdo hlasuje?</label>
+                <div className="space-y-3">
                   <Select
                     value={voterId || '__none__'}
                     onValueChange={(value) => {
@@ -2751,10 +2832,10 @@ function HodnoceniHracuContent() {
                     }}
                   >
                     <SelectTrigger className={`w-full rounded-xl glass-input text-foreground focus:ring-2 focus:ring-blue-400 ${showVoteValidation && !voterId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}>
-                      <SelectValue placeholder="Vyberte sebe" />
+                      <SelectValue placeholder="Kdo hlasuje?" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">Vyberte sebe</SelectItem>
+                      <SelectItem value="__none__">Kdo hlasuje?</SelectItem>
                       {players.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}
@@ -2763,9 +2844,6 @@ function HodnoceniHracuContent() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-                <div>
-                  <label className="block text-foreground font-medium mb-2 text-sm">Za který zápas?</label>
                   <Select
                     value={matchId || '__none__'}
                     onValueChange={(val) => {
@@ -2782,10 +2860,10 @@ function HodnoceniHracuContent() {
                     }}
                   >
                     <SelectTrigger className={`w-full rounded-xl glass-input text-foreground focus:ring-2 focus:ring-blue-400 ${showVoteValidation && !matchId ? 'ring-2 ring-red-500 bg-red-500/20' : ''}`}>
-                      <SelectValue placeholder="Vyberte zápas" />
+                      <SelectValue placeholder="Za který zápas?" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">Vyberte zápas</SelectItem>
+                      <SelectItem value="__none__">Za který zápas?</SelectItem>
                       {playedMatches.map((m) => (
                         <SelectItem key={m.id} value={m.id}>
                           {formatEventDateTime(m.date, m.startTime)}
@@ -2806,51 +2884,28 @@ function HodnoceniHracuContent() {
                     </SelectContent>
                   </Select>
                 </div>
+                {voteSubmittedSuccess && (
+                  <div className="p-3 rounded-xl bg-accent/20 border border-accent/50 flex items-center gap-2">
+                    <span className="text-[#1f3768] dark:text-accent-dark text-xl">✓</span>
+                    <p className="text-[#1f3768] dark:text-accent-light font-medium text-sm">Hotovo! Tvůj hlas je v systému.</p>
+                  </div>
+                )}
                 {hasVoted === true && matchId && (
                   <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/40">
                     <p className="text-amber-200 font-medium text-sm">Už jste pro tento zápas hlasoval.</p>
                     <p className="text-foreground/70 text-xs mt-1">Hodnocení nelze měnit.</p>
                   </div>
                 )}
-
-                {/* Player list — desktop sidebar */}
-                {otherPlayers.length > 0 && voterId && matchId && hasVoted === false && (
-                  <div>
-                    <p className="text-foreground/40 text-xs uppercase tracking-wider mb-2">Hráči</p>
-                    <div className="space-y-1 max-h-[40vh] overflow-y-auto">
-                      {otherPlayers.map((p, i) => {
-                        const s = scores[p.id] ?? 0;
-                        const lastName = p.name.split(' ').pop();
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => setCurrentPlayerIndex(i)}
-                            className={`w-full text-left text-sm px-3 py-2 rounded-xl flex items-center justify-between transition-colors ${
-                              i === currentPlayerIndex
-                                ? 'bg-blue-500/15 text-blue-400 border border-blue-500/40'
-                                : 'text-foreground/70 hover:bg-surface border border-transparent'
-                            }`}
-                          >
-                            <span className="truncate">{p.name}</span>
-                            {s > 0 && (
-                              <span className="text-xs text-foreground/40 ml-2 shrink-0">{s}/10</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
 
-              {/* Right panel — player card */}
+              {/* Right column — rating card */}
               <div className="flex-1 min-w-0">
                 {(!voterId || !matchId) && hasVoted !== true && (
-                  <div className="glass-card rounded-2xl p-8 flex items-center justify-center min-h-[300px] lg:min-h-[400px]">
+                  <div className="glass-card rounded-2xl p-8 flex items-center justify-center min-h-[250px] lg:min-h-[350px]">
                     <p className="text-foreground/30 text-sm">Vyber sebe a zápas pro hodnocení</p>
                   </div>
                 )}
+
                 {otherPlayers.length > 0 && voterId && matchId && hasVoted === false && (() => {
                   const currentPlayer = otherPlayers[currentPlayerIndex];
                   if (!currentPlayer) return null;
@@ -2858,11 +2913,11 @@ function HodnoceniHracuContent() {
                   const isLast = currentPlayerIndex === otherPlayers.length - 1;
                   const initials = currentPlayer.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
                   return (
-                    <div className="space-y-6">
+                    <div className="space-y-6 max-w-md mx-auto">
                       {/* Progress */}
                       <div className="text-center">
                         <span className="text-foreground/40 text-sm">{currentPlayerIndex + 1} / {otherPlayers.length} hráčů</span>
-                        <div className="mt-2 h-1 rounded-full bg-white/[0.08] max-w-md mx-auto">
+                        <div className="mt-2 h-1 rounded-full bg-white/[0.08]">
                           <div
                             className="h-full rounded-full bg-blue-500 transition-all duration-300"
                             style={{ width: `${((currentPlayerIndex + 1) / otherPlayers.length) * 100}%` }}
@@ -2871,7 +2926,7 @@ function HodnoceniHracuContent() {
                       </div>
 
                       {/* Player Card */}
-                      <div className="glass-card rounded-3xl p-6 sm:p-8 max-w-md mx-auto text-center">
+                      <div className="glass-card rounded-3xl p-6 sm:p-8 text-center">
                         {/* Avatar */}
                         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500/30 to-blue-500/10 border-2 border-blue-500/40 flex items-center justify-center mx-auto mb-4 overflow-hidden">
                           {currentPlayer.photoUrl ? (
@@ -2914,7 +2969,7 @@ function HodnoceniHracuContent() {
                       </div>
 
                       {/* Navigation */}
-                      <div className="flex gap-3 max-w-md mx-auto">
+                      <div className="flex gap-3">
                         <button
                           type="button"
                           onClick={() => setCurrentPlayerIndex(Math.max(0, currentPlayerIndex - 1))}
@@ -2935,7 +2990,12 @@ function HodnoceniHracuContent() {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => setCurrentPlayerIndex(currentPlayerIndex + 1)}
+                            onClick={() => {
+                              if (val === 10) {
+                                confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } });
+                              }
+                              setCurrentPlayerIndex(currentPlayerIndex + 1);
+                            }}
                             className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 rounded-xl text-white font-medium transition-colors"
                           >
                             Další hráč
@@ -3111,7 +3171,15 @@ function HodnoceniHracuContent() {
                 <div className="flex flex-wrap items-center gap-2">
                   <DatePicker
                     value={newEventDate}
-                    onChange={setNewEventDate}
+                    onChange={(date) => {
+                      setNewEventDate(date);
+                      const match = matches.find((m) => m.date === date);
+                      if (match) {
+                        setNewEventType('competitive_match');
+                        setNewEventOpponent(match.opponent || '');
+                        if (match.startTime) setNewEventStartTime(match.startTime);
+                      }
+                    }}
                     required
                   />
                   <TimeInput
@@ -3119,18 +3187,37 @@ function HodnoceniHracuContent() {
                     onChange={setNewEventStartTime}
                     required
                   />
-                  <Select value={newEventType} onValueChange={(value) => setNewEventType(value as EventType)}>
-                    <SelectTrigger className="h-10 w-[220px] rounded-lg glass-input text-foreground focus:ring-2 focus:ring-blue-400">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(['training', 'friendly_match', 'competitive_match'] as EventType[]).map((t) => (
-                        <SelectItem key={t} value={t}>
+                  <Popover open={eventTypeOpen} onOpenChange={setEventTypeOpen}>
+                    <PopoverTrigger asChild>
+                      <button type="button" className="h-10 w-[220px] rounded-lg glass-input text-foreground flex items-center justify-between px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                        <span className="truncate">
+                          {newEventType === 'custom' && newEventCustomName ? newEventCustomName : EVENT_TYPE_LABELS[newEventType] || newEventType}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0 ml-2" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-[220px] p-1">
+                      {(['training', 'friendly_match', 'competitive_match'] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => { setNewEventType(t); setNewEventCustomName(''); setEventTypeOpen(false); }}
+                          className={`w-full text-left text-sm px-3 py-2 rounded-md transition-colors ${newEventType === t ? 'bg-blue-500/20 text-blue-400' : 'text-foreground hover:bg-white/5'}`}
+                        >
                           {EVENT_TYPE_LABELS[t]}
-                        </SelectItem>
+                        </button>
                       ))}
-                    </SelectContent>
-                  </Select>
+                      <div className="border-t border-white/10 my-1" />
+                      <input
+                        type="text"
+                        value={newEventCustomName}
+                        onChange={(e) => { setNewEventCustomName(e.target.value); if (e.target.value.trim()) setNewEventType('custom'); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && newEventCustomName.trim()) { e.preventDefault(); setNewEventType('custom'); setEventTypeOpen(false); } }}
+                        placeholder="Vlastní název..."
+                        className="w-full text-sm px-3 py-2 rounded-md bg-white/5 text-foreground placeholder-white/30 outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                    </PopoverContent>
+                  </Popover>
                   <input
                     type="text"
                     value={newEventLocation}
@@ -3139,7 +3226,7 @@ function HodnoceniHracuContent() {
                     className="h-10 flex-1 min-w-[140px] px-4 rounded-lg glass-input text-foreground placeholder-white/50"
                     required
                   />
-                  {newEventType !== 'training' && (
+                  {(newEventType === 'friendly_match' || newEventType === 'competitive_match') && (
                     <input
                       type="text"
                       value={newEventOpponent}
@@ -3156,9 +3243,20 @@ function HodnoceniHracuContent() {
                     className="h-10 w-full px-4 rounded-lg glass-input text-foreground placeholder-white/50"
                   />
                 </div>
-                <button type="submit" disabled={addingEvent} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium disabled:opacity-50 w-fit">
-                  {addingEvent ? '...' : 'Přidat událost'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button type="submit" disabled={addingEvent} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium disabled:opacity-50 w-fit">
+                    {addingEvent ? '...' : 'Přidat událost'}
+                  </button>
+                  {(newEventDate || newEventStartTime || newEventType !== 'training' || newEventLocation || newEventOpponent || newEventNote || newEventCustomName) && (
+                    <button
+                      type="button"
+                      onClick={() => { setNewEventDate(''); setNewEventStartTime(''); setNewEventType('training'); setNewEventLocation(''); setNewEventOpponent(''); setNewEventNote(''); setNewEventCustomName(''); }}
+                      className="px-3 py-2 rounded-lg text-foreground/50 hover:text-foreground/80 hover:bg-white/5 text-sm transition-colors"
+                    >
+                      Resetovat
+                    </button>
+                  )}
+                </div>
               </form>
               {createdEventLink && (
                 <div className="mb-6 p-4 rounded-xl bg-accent/20 border border-accent/40">
@@ -3235,7 +3333,7 @@ function HodnoceniHracuContent() {
                           className="text-left flex-1"
                         >
                           <span className="text-foreground">
-                            {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType]}
+                            {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}
                             {ev.location && ` • ${ev.location}`}
                             {ev.opponent && ev.opponent !== ev.location && ` vs ${ev.opponent}`}
                             {ev.note && (
@@ -3410,7 +3508,7 @@ function HodnoceniHracuContent() {
                 Účast – kdo se hlásí
               </h3>
               <p className="text-foreground/70 text-sm mb-2">
-                {formatEventDateTime(ucastModal.date, ucastModal.startTime)} – {EVENT_TYPE_LABELS[ucastModal.eventType]}
+                {formatEventDateTime(ucastModal.date, ucastModal.startTime)} – {EVENT_TYPE_LABELS[ucastModal.eventType] || ucastModal.eventType}
               </p>
               {(ucastModal.location || ucastModal.note) && (
                 <div className="text-foreground/70 text-sm mb-4 space-y-1">
@@ -3528,7 +3626,7 @@ function HodnoceniHracuContent() {
                 Docházka – finální přehled zúčastněných
               </h3>
               <p className="text-foreground/70 text-sm mb-2">
-                {formatEventDateTime(attendanceModal.date, attendanceModal.startTime)} – {EVENT_TYPE_LABELS[attendanceModal.eventType]}
+                {formatEventDateTime(attendanceModal.date, attendanceModal.startTime)} – {EVENT_TYPE_LABELS[attendanceModal.eventType] || attendanceModal.eventType}
               </p>
               {(attendanceModal.location || attendanceModal.note) && (
                 <div className="text-foreground/70 text-sm mb-4 space-y-1">
@@ -3590,6 +3688,142 @@ function HodnoceniHracuContent() {
             attendanceStats={attendanceStats}
             onClose={() => setPlayerCardModal(null)}
           />
+        )}
+
+        {/* Add Player Modal */}
+        {showAddPlayerModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { if (!addPlayerCropMode) { setShowAddPlayerModal(false); clearAddPlayerPhoto(); } }} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative glass-card rounded-2xl p-6 w-full max-w-sm shadow-2xl z-10"
+            >
+              {addPlayerCropMode && addPlayerRawSrc ? (
+                <>
+                  <h3 className="text-lg font-semibold text-foreground mb-3">Upravit fotku</h3>
+                  <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3">
+                    <Cropper
+                      image={addPlayerRawSrc}
+                      crop={addPlayerCrop}
+                      zoom={addPlayerZoom}
+                      aspect={1}
+                      cropShape="round"
+                      onCropChange={setAddPlayerCrop}
+                      onZoomChange={setAddPlayerZoom}
+                      onCropComplete={(_, croppedPixels) => setAddPlayerCroppedArea(croppedPixels)}
+                    />
+                  </div>
+                  <div className="flex items-center gap-3 mb-4 px-1">
+                    <span className="text-foreground/50 text-xs">Zoom</span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={3}
+                      step={0.05}
+                      value={addPlayerZoom}
+                      onChange={(e) => setAddPlayerZoom(Number(e.target.value))}
+                      className="flex-1 accent-blue-500"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={handleAddPlayerCropCancel} className="flex-1 px-4 py-2.5 rounded-xl bg-surface-hover text-foreground hover:bg-white/20 font-medium text-sm">
+                      Zrušit
+                    </button>
+                    <button type="button" onClick={handleAddPlayerCropConfirm} className="flex-1 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm">
+                      Použít
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+              <button
+                type="button"
+                onClick={() => { setShowAddPlayerModal(false); clearAddPlayerPhoto(); }}
+                className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-foreground/70 hover:text-foreground transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Přidat hráče</h3>
+              <form onSubmit={addPlayer} className="space-y-3">
+                {/* Photo */}
+                <div className="flex flex-col items-center mb-1">
+                  {addPlayerPhotoPreview ? (
+                    <div className="relative group">
+                      <img src={addPlayerPhotoPreview} alt="Náhled" className="w-20 h-20 rounded-full object-cover border-2 border-white/10" />
+                      <button
+                        type="button"
+                        onClick={clearAddPlayerPhoto}
+                        className="absolute -top-1 -right-1 w-6 h-6 flex items-center justify-center rounded-full bg-red-500 text-white text-xs hover:bg-red-600 transition-colors"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => addPlayerFileInputRef.current?.click()}
+                      className="w-20 h-20 rounded-full border-2 border-dashed border-white/20 flex flex-col items-center justify-center text-foreground/40 hover:border-white/40 hover:text-foreground/60 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+                      </svg>
+                      <span className="text-[10px] mt-0.5">Fotka</span>
+                    </button>
+                  )}
+                  <input
+                    ref={addPlayerFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAddPlayerPhotoSelect}
+                  />
+                </div>
+                {/* Name */}
+                <div>
+                  <label className="block text-sm text-foreground/60 mb-1">Jméno hráče</label>
+                  <input
+                    type="text"
+                    value={newPlayerName}
+                    onChange={(e) => setNewPlayerName(e.target.value)}
+                    placeholder="Jméno a příjmení"
+                    className="w-full px-4 py-2.5 rounded-xl glass-input text-foreground placeholder-white/40"
+                    required
+                    autoFocus
+                  />
+                </div>
+                {/* Jersey number */}
+                <div>
+                  <label className="block text-sm text-foreground/60 mb-1">Číslo dresu</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={newPlayerJerseyNumber}
+                    onChange={(e) => setNewPlayerJerseyNumber(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                    placeholder="1–99"
+                    className="w-full px-4 py-2.5 rounded-xl glass-input text-foreground placeholder-white/40"
+                    title="Číslo dresu (1-99)"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={addingPlayer}
+                  className="w-full mt-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl text-white font-semibold disabled:opacity-50 transition-colors"
+                >
+                  {addingPlayer ? 'Přidávám...' : 'Přidat hráče'}
+                </button>
+              </form>
+                </>
+              )}
+            </motion.div>
+          </div>
         )}
 
         {playerDetailModal && (

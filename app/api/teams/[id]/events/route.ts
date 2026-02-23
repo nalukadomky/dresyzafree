@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/middleware';
-import { dbEvents, type EventType } from '@/lib/db-events';
+import { dbEvents } from '@/lib/db-events';
 
 export async function GET(
   request: NextRequest,
@@ -57,9 +57,8 @@ export async function POST(
     if (!locationValue) {
       return NextResponse.json({ error: 'Místo konání je povinné' }, { status: 400 });
     }
-    const validTypes: EventType[] = ['training', 'friendly_match', 'competitive_match'];
-    if (!eventType || !validTypes.includes(eventType)) {
-      return NextResponse.json({ error: 'Neplatný typ události' }, { status: 400 });
+    if (!eventType || typeof eventType !== 'string' || eventType.trim().length === 0) {
+      return NextResponse.json({ error: 'Typ události je povinný' }, { status: 400 });
     }
     const event = await dbEvents.events.add(
       params.id,
