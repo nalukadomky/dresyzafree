@@ -163,7 +163,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen animated-background py-12 px-4 flex items-start justify-center">
+      <div className="min-h-screen py-12 px-4 flex items-start justify-center">
         <GhostDashboard />
       </div>
     );
@@ -171,7 +171,7 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen animated-background flex items-center justify-center px-4">
+      <div className="min-h-screen flex items-center justify-center px-4">
         <div className="glass-card rounded-2xl p-8 max-w-md">
           <div className="flex items-center space-x-3 mb-4">
             <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -206,7 +206,7 @@ export default function DashboardPage() {
   const hasAnyJerseyLink = jerseyLinks.some((l) => l.url);
 
   return (
-    <div className="min-h-screen animated-background py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8" style={bgStyle}>
+    <div className="min-h-screen py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8" style={bgStyle}>
       {/* Top bar */}
       <div className="fixed top-3 right-3 sm:top-4 sm:right-4 z-20 flex items-center gap-1">
         <motion.button

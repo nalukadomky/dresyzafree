@@ -1947,7 +1947,7 @@ function HodnoceniHracuContent() {
 
   if (loading || !teamId) {
     return (
-      <div className="min-h-screen animated-background py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
+      <div className="min-h-screen py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
         <GhostHodnoceni />
       </div>
     );
@@ -1955,7 +1955,7 @@ function HodnoceniHracuContent() {
 
   return (
     <div
-      className="min-h-screen animated-background py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8 relative"
+      className="min-h-screen py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8 relative"
       style={teamBackgroundColor ? { background: teamBackgroundColor } : undefined}
     >
       {/* Match Result Popup */}
@@ -3769,7 +3769,7 @@ function OverviewProgressLoader({ progress, onNearComplete }: { progress: number
 export default function HodnoceniHracuPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen animated-background py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
+      <div className="min-h-screen py-4 sm:py-6 md:py-8 px-3 sm:px-4 md:px-6 lg:px-8">
         <GhostHodnoceni />
       </div>
     }>

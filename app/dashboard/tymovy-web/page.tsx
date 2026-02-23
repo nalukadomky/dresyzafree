@@ -508,7 +508,7 @@ export default function TeamWebBuilder() {
       </svg>,
     ];
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-8">
           {/* Floating icons */}
           <div className="flex items-center gap-6">
@@ -584,7 +584,7 @@ export default function TeamWebBuilder() {
   // ── Render ──────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
       {/* ── Top bar ──────────────────────────────────────────── */}
       <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-lg border-b border-border px-4 py-3">
         <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto">
