@@ -1,0 +1,25 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { dbWebsite } from '@/lib/db-website';
+
+// GET — public website data (no auth required)
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { slug: string } }
+) {
+  try {
+    const data = await dbWebsite.getPublicWebsite(params.slug);
+
+    if (!data) {
+      return NextResponse.json({ error: 'Web nenalezen' }, { status: 404 });
+    }
+
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      },
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Chyba serveru';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
