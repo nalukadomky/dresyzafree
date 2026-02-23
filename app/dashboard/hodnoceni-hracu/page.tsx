@@ -2136,10 +2136,10 @@ function HodnoceniHracuContent() {
                             onSizeChange={handleOverviewSizeChange}
                           >
                             <div className="glass-card group relative overflow-visible rounded-2xl p-4 sm:p-6 lg:pr-44 xl:pr-56 border border-amber-500/30 bg-amber-500/5">
-                              <div className="space-y-1 relative z-10">
+                              <div className="relative z-10 flex flex-wrap items-start gap-x-6 gap-y-2">
                                 {lastMatch && (
-                                  <>
-                                    <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 sm:mb-3">Poslední odehraný zápas</h2>
+                                  <div className="space-y-1">
+                                    <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 sm:mb-3">Poslední zápas</h2>
                                     <p className="text-foreground font-medium">
                                       {formatEventDateTime(lastMatch.date, lastMatch.startTime)} vs {lastMatch.opponent || 'soupeř'}
                                     </p>
@@ -2149,11 +2149,11 @@ function HodnoceniHracuContent() {
                                         <span aria-hidden>⭐</span> Hráč utkání: {pom.playerName}
                                       </p>
                                     )}
-                                  </>
+                                  </div>
                                 )}
                                 {nextMatch && (
-                                  <div className={lastMatch ? 'border-t border-amber-500/20 mt-3 pt-3' : ''}>
-                                    <p className="text-foreground/50 text-xs uppercase tracking-wider mb-1">Příští zápas</p>
+                                  <div className={`space-y-1 ${lastMatch ? 'border-l-2 border-white/25 pl-6' : ''}`}>
+                                    <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 sm:mb-3">Příští zápas</h2>
                                     <p className="text-foreground font-medium">
                                       {formatEventDateTime(nextMatch.date, nextMatch.startTime)} vs {nextMatch.opponent || 'soupeř'}
                                     </p>
