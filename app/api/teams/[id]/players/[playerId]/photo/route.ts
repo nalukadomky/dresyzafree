@@ -5,6 +5,41 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 
 const BUCKET_NAME = 'player-photos';
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string; playerId: string } }
+) {
+  try {
+    const user = verifyToken(request);
+    if (!user) return NextResponse.json({ error: 'Neautorizovaný přístup' }, { status: 401 });
+    if (user.type === 'team' && user.id !== params.id)
+      return NextResponse.json({ error: 'Nemáte oprávnění' }, { status: 403 });
+
+    const player = await dbPlayers.players.getById(params.playerId, params.id);
+    if (!player) return NextResponse.json({ error: 'Hráč nenalezen' }, { status: 404 });
+
+    if (player.photoUrl && supabaseAdmin) {
+      try {
+        const url = new URL(player.photoUrl);
+        const pathMatch = url.pathname.match(/\/player-photos\/(.+)$/);
+        if (pathMatch) {
+          await supabaseAdmin.storage.from(BUCKET_NAME).remove([pathMatch[1]]);
+        }
+      } catch {
+        // Storage cleanup failed — continue anyway
+      }
+    }
+
+    const updated = await dbPlayers.players.clearPhoto(params.playerId, params.id);
+    return NextResponse.json({ success: true, player: updated });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error?.message || 'Chyba při mazání fotky' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string; playerId: string } }

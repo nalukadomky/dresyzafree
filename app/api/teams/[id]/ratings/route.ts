@@ -23,6 +23,14 @@ export async function GET(
     }
     const team = await db.teams.getById(params.id);
     const coachPlayerId = team?.coachPlayerId ?? null;
+    const playerId = request.nextUrl.searchParams.get('playerId') || undefined;
+
+    // Per-player match ratings
+    if (playerId) {
+      const playerRatings = await dbPlayers.ratings.getPlayerRatings(params.id, playerId, coachPlayerId);
+      return NextResponse.json({ playerRatings });
+    }
+
     const matchId = request.nextUrl.searchParams.get('matchId') || undefined;
     const season = request.nextUrl.searchParams.get('season') || undefined;
     const leaderboard = await dbPlayers.ratings.getLeaderboard(params.id, coachPlayerId, {

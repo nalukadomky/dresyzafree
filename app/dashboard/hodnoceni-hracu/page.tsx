@@ -5,10 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { GhostHodnoceni, GhostOverviewCards } from '@/components/GhostLoader';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import PlayerDetailModal from '@/components/PlayerDetailModal';
 import TacticsBoard from '@/components/TacticsBoard';
 import ThemeToggle from '@/components/ThemeToggle';
 import { MotionPage } from '@/components/Motion';
-import { Reorder, useDragControls, AnimatePresence, motion } from 'framer-motion';
+import { Reorder, useDragControls, AnimatePresence, motion, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import {
   Select,
   SelectContent,
@@ -950,6 +951,7 @@ function HodnoceniHracuContent() {
   const [loading, setLoading] = useState(true);
   const [initialDataReady, setInitialDataReady] = useState(false);
   const [dashboardCardsLoading, setDashboardCardsLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [tab, setTab] = useState<Tab>(
     tabParam === 'dashboard' || tabParam === 'calendar' || tabParam === 'vote' || tabParam === 'leaderboard' || tabParam === 'canadian' || tabParam === 'taktika'
       ? tabParam as Tab
@@ -997,8 +999,7 @@ function HodnoceniHracuContent() {
   const [canadianFilter, setCanadianFilter] = useState<string>('');
   const [matchPopup, setMatchPopup] = useState<Match | null>(null);
   const [showAllUpcomingMatches, setShowAllUpcomingMatches] = useState(false);
-  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
-  const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
+  const [playerDetailModal, setPlayerDetailModal] = useState<Player | null>(null);
   const newPlayerInputRef = useRef<HTMLInputElement>(null);
   const icsFileInputRef = useRef<HTMLInputElement>(null);
   const [icsClubFilter, setIcsClubFilter] = useState('');
@@ -1106,6 +1107,11 @@ function HodnoceniHracuContent() {
     const initLoad = async () => {
       setInitialDataReady(false);
       setDashboardCardsLoading(true);
+      setLoadingProgress(0);
+
+      const withProgress = (p: Promise<unknown>) =>
+        p.finally(() => setLoadingProgress((prev) => Math.min(95, prev + 19)));
+
       const teamFetch = fetch(`/api/teams/${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
@@ -1120,16 +1126,18 @@ function HodnoceniHracuContent() {
         .catch(() => {});
 
       await Promise.allSettled([
-        fetchPlayers(),
-        fetchMatches(),
-        fetchEvents(),
-        fetchAttendanceStats(),
-        teamFetch,
+        withProgress(fetchPlayers()),
+        withProgress(fetchMatches()),
+        withProgress(fetchEvents()),
+        withProgress(fetchAttendanceStats()),
+        withProgress(teamFetch),
       ]);
 
       if (!active) return;
+      setLoadingProgress(100);
       setInitialDataReady(true);
-      setDashboardCardsLoading(false);
+      // setDashboardCardsLoading(false) is called by OverviewProgressLoader's onNearComplete
+      // once the spring animation visually reaches 99%
     };
     initLoad();
     return () => {
@@ -1578,31 +1586,6 @@ function HodnoceniHracuContent() {
       }
     } finally {
       setSavingCoach(false);
-    }
-  };
-
-  const uploadPlayerPhoto = async (playerId: string, file: File) => {
-    if (!teamId || !token) return;
-    setUploadingPhotoId(playerId);
-    try {
-      const formData = new FormData();
-      formData.append('photo', file);
-      const res = await fetch(`/api/teams/${teamId}/players/${playerId}/photo`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      const d = await res.json().catch(() => ({}));
-      if (res.ok) {
-        await fetchPlayers();
-        toast.success('Fotka byla nahrána');
-      } else {
-        toast.error(d.error || 'Chyba při nahrávání fotky');
-      }
-    } catch {
-      toast.error('Chyba při nahrávání fotky');
-    } finally {
-      setUploadingPhotoId(null);
     }
   };
 
@@ -2123,7 +2106,7 @@ function HodnoceniHracuContent() {
             )}
 
             {dashboardCardsLoading || !initialDataReady ? (
-              <GhostOverviewCards />
+              <OverviewProgressLoader progress={loadingProgress} onNearComplete={() => setDashboardCardsLoading(false)} />
             ) : (
               <Reorder.Group
                 axis="y"
@@ -2441,160 +2424,32 @@ function HodnoceniHracuContent() {
                 </button>
               </form>
               <ul className="space-y-1">
-                {players.map((p) => {
-                  const isExpanded = expandedPlayerId === p.id;
-                  const lbEntry = leaderboard.find((l) => l.playerId === p.id);
-                  const canadian = canadianStats.find((c) => c.playerId === p.id);
-                  const attendance = attendanceStats.find((a) => a.playerId === p.id);
-                  return (
-                    <li key={p.id} className="border-b border-border">
-                      <div className="flex justify-between items-center py-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setExpandedPlayerId(isExpanded ? null : p.id)}
-                          className="text-foreground flex items-center gap-2 min-w-0 text-left hover:text-blue-400 transition-colors group"
-                        >
-                          {p.photoUrl ? (
-                            <img src={p.photoUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0 border border-border" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0 text-foreground/40 text-xs font-bold">
-                              {p.jerseyNumber ?? p.name.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          <span className="truncate">
-                            {p.jerseyNumber != null ? `#${p.jerseyNumber} ` : ''}{p.name}
-                          </span>
-                          {coachPlayerId === p.id && (
-                            <span className="text-blue-400 text-xs font-medium shrink-0">(trenér)</span>
-                          )}
-                          <svg className={`w-4 h-4 shrink-0 text-foreground/30 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={playerJerseyInputs[p.id] ?? ''}
-                            onChange={(e) =>
-                              setPlayerJerseyInputs((prev) => ({
-                                ...prev,
-                                [p.id]: e.target.value.replace(/\D/g, '').slice(0, 2),
-                              }))
-                            }
-                            placeholder="#"
-                            className="w-14 px-2 py-1.5 rounded-md glass-input text-foreground placeholder-white/50 text-center text-sm"
-                            aria-label={`Číslo dresu pro ${p.name}`}
-                            title="Číslo dresu (1-99)"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => savePlayerJerseyNumber(p.id)}
-                            disabled={savingPlayerJerseyId === p.id}
-                            className="text-xs px-2.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
-                          >
-                            {savingPlayerJerseyId === p.id ? '...' : 'Uložit'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deletePlayer(p.id, p.name)}
-                            className="text-red-400 hover:text-red-300 text-sm"
-                          >
-                            Smazat
-                          </button>
+                {players.map((p) => (
+                  <li
+                    key={p.id}
+                    className="flex items-center justify-between py-2.5 px-2 -mx-2 border-b border-border cursor-pointer rounded-lg hover:bg-foreground/[0.04] transition-colors"
+                    onClick={() => setPlayerDetailModal(p)}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {p.photoUrl ? (
+                        <img src={p.photoUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0 border border-border" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0 text-foreground/40 text-xs font-bold">
+                          {p.jerseyNumber ?? p.name.charAt(0).toUpperCase()}
                         </div>
-                      </div>
-
-                      {/* Expanded player card */}
-                      <AnimatePresence>
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2, ease: 'easeInOut' }}
-                            className="overflow-hidden"
-                          >
-                            <div className="pb-4 pt-1 px-1">
-                              <div className="rounded-xl bg-surface border border-border p-4">
-                                {/* Photo + stats row */}
-                                <div className="flex gap-4 items-start">
-                                  {/* Photo */}
-                                  <div className="shrink-0">
-                                    <label className="cursor-pointer group/photo block relative">
-                                      <input
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0];
-                                          if (file) uploadPlayerPhoto(p.id, file);
-                                          e.target.value = '';
-                                        }}
-                                      />
-                                      {p.photoUrl ? (
-                                        <div className="w-20 h-20 rounded-xl overflow-hidden border border-border relative">
-                                          <img src={p.photoUrl} alt={p.name} className="w-full h-full object-cover" />
-                                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center">
-                                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                                              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-                                            </svg>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center text-foreground/30 hover:text-foreground/50 hover:border-foreground/30 transition-colors">
-                                          {uploadingPhotoId === p.id ? (
-                                            <LoadingSpinner />
-                                          ) : (
-                                            <>
-                                              <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-                                              </svg>
-                                              <span className="text-[10px]">Fotka</span>
-                                            </>
-                                          )}
-                                        </div>
-                                      )}
-                                    </label>
-                                  </div>
-
-                                  {/* Stats grid */}
-                                  <div className="flex-1 grid grid-cols-2 gap-2">
-                                    <div className="py-2 px-3 rounded-lg bg-background border border-border text-center">
-                                      <p className="text-foreground/40 text-[10px] uppercase tracking-wider">Hodnocení</p>
-                                      <p className="text-foreground font-bold text-lg leading-tight">
-                                        {lbEntry ? `${lbEntry.avgScore}` : '–'}
-                                      </p>
-                                      {lbEntry && <p className="text-foreground/30 text-[10px]">{lbEntry.voteCount} hlasů</p>}
-                                    </div>
-                                    <div className="py-2 px-3 rounded-lg bg-background border border-border text-center">
-                                      <p className="text-foreground/40 text-[10px] uppercase tracking-wider">Docházka</p>
-                                      <p className="text-foreground font-bold text-lg leading-tight">
-                                        {attendance ? `${Math.round(attendance.attendancePct)}%` : '–'}
-                                      </p>
-                                      {attendance && <p className="text-foreground/30 text-[10px]">{attendance.matchCount}Z {attendance.trainingCount}T</p>}
-                                    </div>
-                                    <div className="py-2 px-3 rounded-lg bg-background border border-border text-center">
-                                      <p className="text-foreground/40 text-[10px] uppercase tracking-wider">Góly</p>
-                                      <p className="text-foreground font-bold text-lg leading-tight">{canadian?.goals ?? 0}</p>
-                                    </div>
-                                    <div className="py-2 px-3 rounded-lg bg-background border border-border text-center">
-                                      <p className="text-foreground/40 text-[10px] uppercase tracking-wider">Asistence</p>
-                                      <p className="text-foreground font-bold text-lg leading-tight">{canadian?.assists ?? 0}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </li>
-                  );
-                })}
+                      )}
+                      <span className="text-foreground truncate">
+                        {p.jerseyNumber != null ? `#${p.jerseyNumber} ` : ''}{p.name}
+                      </span>
+                      {coachPlayerId === p.id && (
+                        <span className="text-blue-400 text-xs font-medium shrink-0">(trenér)</span>
+                      )}
+                    </div>
+                    <svg className="w-4 h-4 text-foreground/30 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </li>
+                ))}
               </ul>
               {playerJerseyFeedback && (
                 <p className={`mt-3 text-xs ${playerJerseyFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
@@ -3722,6 +3577,24 @@ function HodnoceniHracuContent() {
             onClose={() => setPlayerCardModal(null)}
           />
         )}
+
+        {playerDetailModal && (
+          <PlayerDetailModal
+            player={playerDetailModal}
+            teamId={teamId!}
+            token={token!}
+            isCoach={coachPlayerId === playerDetailModal.id}
+            onClose={() => setPlayerDetailModal(null)}
+            onPlayerUpdated={(p) => {
+              setPlayers((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...p } : x)));
+              setPlayerDetailModal({ ...playerDetailModal, ...p });
+            }}
+            onPlayerDeleted={(id) => {
+              setPlayers((prev) => prev.filter((x) => x.id !== id));
+              setPlayerDetailModal(null);
+            }}
+          />
+        )}
       </MotionPage>
     </div>
   );
@@ -3789,6 +3662,91 @@ function PlayerCardModal({
         >
           Zavřít
         </button>
+      </div>
+    </div>
+  );
+}
+
+function OverviewProgressLoader({ progress, onNearComplete }: { progress: number; onNearComplete?: () => void }) {
+  const rawProgress = useMotionValue(0);
+  const motionProgress = useSpring(rawProgress, { stiffness: 28, damping: 18, mass: 1 });
+
+  const displayPercent = useTransform(motionProgress, (v) => `${Math.round(Math.min(100, Math.max(0, v)))}%`);
+  const barWidth = useTransform(motionProgress, (v) => `${Math.min(100, Math.max(0, v))}%`);
+  const thumbLeft = useTransform(motionProgress, (v) => `${Math.min(100, Math.max(0, v))}%`);
+
+  useEffect(() => {
+    rawProgress.set(progress);
+  }, [progress]);
+
+  // When progress reaches 100, wait until the spring visually crosses 99 before revealing content
+  useEffect(() => {
+    if (progress < 100) return;
+    const unsubscribe = motionProgress.on('change', (v) => {
+      if (v >= 99) {
+        onNearComplete?.();
+        unsubscribe();
+      }
+    });
+    return () => unsubscribe();
+  }, [progress]);
+
+  const icons = [
+    <svg key="trophy" className="w-7 h-7" fill="none" stroke="#3B82F6" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-4.5A3.375 3.375 0 0019.875 10.875 3.375 3.375 0 0016.5 7.5h0V3.75h-9V7.5h0a3.375 3.375 0 00-3.375 3.375A3.375 3.375 0 007.5 14.25v4.5m9-12.75h-9" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 14.25v4.5" />
+    </svg>,
+    <svg key="rocket" className="w-7 h-7" fill="none" stroke="#3B82F6" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+    </svg>,
+    <svg key="star" className="w-7 h-7" fill="none" stroke="#3B82F6" viewBox="0 0 24 24" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+    </svg>,
+  ];
+
+  return (
+    <div className="flex flex-col items-center justify-center py-20 gap-8">
+      {/* Plovoucí ikony */}
+      <div className="flex items-center gap-6">
+        {icons.map((icon, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: [0, 1, 1, 0.3], y: [20, 0, -8, 0] }}
+            transition={{ duration: 3, repeat: Infinity, delay: i * 0.4, ease: 'easeInOut' }}
+          >
+            {icon}
+          </motion.div>
+        ))}
+      </div>
+      {/* Branding */}
+      <div className="text-center">
+        <h2 className="text-xl font-bold text-foreground tracking-tight">
+          My<span className="text-blue-500">Pitch</span>
+        </h2>
+        <p className="text-foreground/30 text-xs mt-1">Načítám přehled...</p>
+      </div>
+      {/* Progress bar + procenta */}
+      <div className="flex flex-col items-center gap-2">
+        <div className="w-48 relative">
+          <div className="h-2 rounded-full bg-foreground/[0.08]" />
+          <motion.div
+            className="absolute top-0 left-0 h-2 rounded-full"
+            style={{ background: 'linear-gradient(90deg, #3B82F6, #6366F1)', width: barWidth }}
+          />
+          <motion.div
+            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full"
+            style={{
+              background: '#3B82F6',
+              border: '2px solid rgba(99, 102, 241, 0.8)',
+              boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.2), 0 2px 12px rgba(0, 0, 0, 0.3)',
+              left: thumbLeft,
+            }}
+          />
+        </div>
+        <motion.p className="text-sm font-mono font-semibold text-blue-500 tabular-nums">
+          {displayPercent}
+        </motion.p>
       </div>
     </div>
   );

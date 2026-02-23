@@ -10,6 +10,7 @@ export interface Player {
   id: string;
   teamId: string;
   name: string;
+  jerseyNumber?: number;
   photoUrl?: string;
   createdAt: string;
 }
@@ -40,6 +41,7 @@ const mapPlayer = (row: any): Player => ({
   id: row.id,
   teamId: row.team_id,
   name: row.name,
+  jerseyNumber: row.jersey_number || undefined,
   photoUrl: row.photo_url || undefined,
   createdAt: row.created_at,
 });
@@ -100,6 +102,28 @@ export const dbPlayers = {
       const { data, error } = await client!
         .from('players')
         .update({ photo_url: photoUrl })
+        .eq('id', id)
+        .eq('team_id', teamId)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data ? mapPlayer(data) : null;
+    },
+    clearPhoto: async (id: string, teamId: string): Promise<Player | null> => {
+      const { data, error } = await client!
+        .from('players')
+        .update({ photo_url: null })
+        .eq('id', id)
+        .eq('team_id', teamId)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data ? mapPlayer(data) : null;
+    },
+    updateJerseyNumber: async (id: string, teamId: string, jerseyNumber: number | null): Promise<Player | null> => {
+      const { data, error } = await client!
+        .from('players')
+        .update({ jersey_number: jerseyNumber })
         .eq('id', id)
         .eq('team_id', teamId)
         .select()
@@ -392,6 +416,62 @@ export const dbPlayers = {
         .eq('voter_player_id', voterPlayerId)
         .limit(1);
       return (data?.length || 0) > 0;
+    },
+    /** Per-match average ratings for a single player */
+    getPlayerRatings: async (
+      teamId: string,
+      playerId: string,
+      coachPlayerId?: string | null
+    ): Promise<{ matchId: string; date: string; opponent: string; avgScore: number; voteCount: number }[]> => {
+      const { data: matches } = await client!
+        .from('matches')
+        .select('id, date, opponent')
+        .eq('team_id', teamId)
+        .order('date', { ascending: false });
+      if (!matches || matches.length === 0) return [];
+
+      const matchIds = matches.map((m) => m.id);
+      const { data: ratings } = await client!
+        .from('ratings')
+        .select('match_id, voter_player_id, percentage')
+        .eq('rated_player_id', playerId)
+        .in('match_id', matchIds);
+      if (!ratings || ratings.length === 0) return [];
+
+      const matchMap = new Map(matches.map((m) => [m.id, m]));
+      const byMatch: Record<string, { weightedSum: number; totalWeight: number }> = {};
+
+      // Count non-coach votes per match
+      const nonCoachCount: Record<string, number> = {};
+      for (const r of ratings) {
+        if (r.percentage <= 0) continue;
+        if (!nonCoachCount[r.match_id]) nonCoachCount[r.match_id] = 0;
+        const isCoach = coachPlayerId && r.voter_player_id === coachPlayerId;
+        if (!isCoach) nonCoachCount[r.match_id] += 1;
+      }
+
+      for (const r of ratings) {
+        if (r.percentage <= 0) continue;
+        if (!byMatch[r.match_id]) byMatch[r.match_id] = { weightedSum: 0, totalWeight: 0 };
+        const isCoach = coachPlayerId && r.voter_player_id === coachPlayerId;
+        const n = nonCoachCount[r.match_id] ?? 0;
+        const weight = isCoach ? 1.3 * n : 1;
+        byMatch[r.match_id].weightedSum += r.percentage * weight;
+        byMatch[r.match_id].totalWeight += weight;
+      }
+
+      return Object.entries(byMatch)
+        .map(([matchId, d]) => {
+          const m = matchMap.get(matchId);
+          return {
+            matchId,
+            date: m?.date ?? '',
+            opponent: m?.opponent ?? '',
+            avgScore: Math.round((d.weightedSum / d.totalWeight) * 10) / 10,
+            voteCount: Math.round(d.totalWeight),
+          };
+        })
+        .sort((a, b) => b.date.localeCompare(a.date));
     },
   },
 };
