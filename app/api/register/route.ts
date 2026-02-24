@@ -5,7 +5,7 @@ import { hashPassword } from '@/lib/auth';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { teamName, contactPerson, phone, email, leagues, username, password, logo, referrerId } = body;
+    const { teamName, contactPerson, phone, email, username, password, logo, referrerId } = body;
 
     // Detailní validace jednotlivých polí
     const fieldErrors: Record<string, string> = {};
@@ -28,10 +28,6 @@ export async function POST(request: NextRequest) {
       fieldErrors.email = 'E-mail je povinný';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       fieldErrors.email = 'Neplatný formát e-mailu';
-    }
-    
-    if (!Array.isArray(leagues) || leagues.length === 0) {
-      fieldErrors.leagues = 'Vyberte alespoň jednu ligu';
     }
     
     if (!username || !username.trim()) {
@@ -86,7 +82,6 @@ export async function POST(request: NextRequest) {
       contactPerson,
       phone,
       email,
-      leagues,
       username,
       password: hashedPassword,
       logo: logo || undefined,
@@ -99,7 +94,6 @@ export async function POST(request: NextRequest) {
       contactPerson,
       phone,
       email,
-      leagues,
       username,
       logo: logo || 'žádné',
       referrerId: referrerId || 'žádné',

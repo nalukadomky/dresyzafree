@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import {
   format,
   parse,
@@ -78,84 +79,87 @@ export function DatePicker({ value, onChange, className, required }: DatePickerP
         {date ? format(date, "d. M. yyyy", { locale: cs }) : <span className="text-white/50">Datum</span>}
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-            onClick={() => setOpen(false)}
-          >
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {open && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="glass-card rounded-2xl p-5 shadow-2xl border border-white/10 w-full max-w-[340px]"
-              onClick={(e) => e.stopPropagation()}
+              className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              onClick={() => setOpen(false)}
             >
-              {/* Month navigation */}
-              <div className="flex items-center justify-between mb-4">
-                <button
-                  type="button"
-                  onClick={() => setViewMonth(subMonths(viewMonth, 1))}
-                  className="h-10 w-10 rounded-xl inline-flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-                <span className="text-sm font-semibold text-white capitalize">
-                  {format(viewMonth, "LLLL yyyy", { locale: cs })}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setViewMonth(addMonths(viewMonth, 1))}
-                  className="h-10 w-10 rounded-xl inline-flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
-                >
-                  <ChevronRight className="h-5 w-5" />
-                </button>
-              </div>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.15 }}
+                className="glass-card rounded-2xl p-5 shadow-2xl border border-white/10 w-full max-w-[340px]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Month navigation */}
+                <div className="flex items-center justify-between mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setViewMonth(subMonths(viewMonth, 1))}
+                    className="h-10 w-10 rounded-xl inline-flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <span className="text-sm font-semibold text-white capitalize">
+                    {format(viewMonth, "LLLL yyyy", { locale: cs })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setViewMonth(addMonths(viewMonth, 1))}
+                    className="h-10 w-10 rounded-xl inline-flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </div>
 
-              {/* Weekday headers */}
-              <div className="grid grid-cols-7 mb-1">
-                {weekDays.map((wd) => (
-                  <div key={wd} className="text-center text-xs text-white/40 font-medium py-1">
-                    {wd}
-                  </div>
-                ))}
-              </div>
+                {/* Weekday headers */}
+                <div className="grid grid-cols-7 mb-1">
+                  {weekDays.map((wd) => (
+                    <div key={wd} className="text-center text-xs text-white/40 font-medium py-1">
+                      {wd}
+                    </div>
+                  ))}
+                </div>
 
-              {/* Days grid */}
-              <div className="grid grid-cols-7">
-                {weeks.map((week, wi) =>
-                  week.map((d, di) => {
-                    const inMonth = isSameMonth(d, viewMonth);
-                    const selected = date ? isSameDay(d, date) : false;
-                    const today = isToday(d);
-                    return (
-                      <button
-                        key={`${wi}-${di}`}
-                        type="button"
-                        onClick={() => handleSelect(d)}
-                        className={cn(
-                          "h-10 w-full rounded-lg text-sm transition-colors inline-flex items-center justify-center",
-                          !inMonth && "text-white/20 hover:text-white/40",
-                          inMonth && !selected && "text-white/80 hover:bg-white/10 hover:text-white",
-                          today && !selected && "bg-white/10 text-white font-semibold",
-                          selected && "bg-blue-500 text-white font-semibold hover:bg-blue-600",
-                        )}
-                      >
-                        {format(d, "d")}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
+                {/* Days grid */}
+                <div className="grid grid-cols-7">
+                  {weeks.map((week, wi) =>
+                    week.map((d, di) => {
+                      const inMonth = isSameMonth(d, viewMonth);
+                      const selected = date ? isSameDay(d, date) : false;
+                      const today = isToday(d);
+                      return (
+                        <button
+                          key={`${wi}-${di}`}
+                          type="button"
+                          onClick={() => handleSelect(d)}
+                          className={cn(
+                            "h-10 w-full rounded-lg text-sm transition-colors inline-flex items-center justify-center",
+                            !inMonth && "text-white/20 hover:text-white/40",
+                            inMonth && !selected && "text-white/80 hover:bg-white/10 hover:text-white",
+                            today && !selected && "bg-white/10 text-white font-semibold",
+                            selected && "bg-blue-500 text-white font-semibold hover:bg-blue-600",
+                          )}
+                        >
+                          {format(d, "d")}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </>
   );
 }

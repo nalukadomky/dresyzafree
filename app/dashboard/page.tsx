@@ -12,6 +12,10 @@ import { MotionItem, MotionPage } from '@/components/Motion';
 interface Team {
   id: string;
   teamName: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  username: string;
   logo?: string;
   jerseyUrl?: string;
   shortsUrl?: string;
@@ -31,6 +35,17 @@ export default function DashboardPage() {
   const [settingsLogoFile, setSettingsLogoFile] = useState<File | null>(null);
   const [settingsLogoPreview, setSettingsLogoPreview] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsContactPerson, setSettingsContactPerson] = useState('');
+  const [settingsPhone, setSettingsPhone] = useState('');
+  const [settingsEmail, setSettingsEmail] = useState('');
+  const [settingsErrors, setSettingsErrors] = useState<Record<string, string>>({});
+  const [passwordOld, setPasswordOld] = useState('');
+  const [passwordNew, setPasswordNew] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [passwordSectionOpen, setPasswordSectionOpen] = useState(false);
   const [jerseyLeadOpen, setJerseyLeadOpen] = useState(false);
   const [leadName, setLeadName] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
@@ -87,8 +102,18 @@ export default function DashboardPage() {
 
   const openSettings = () => {
     setSettingsTeamName(team?.teamName || '');
+    setSettingsContactPerson(team?.contactPerson || '');
+    setSettingsPhone(team?.phone || '');
+    setSettingsEmail(team?.email || '');
     setSettingsLogoFile(null);
     setSettingsLogoPreview(null);
+    setSettingsErrors({});
+    setPasswordOld('');
+    setPasswordNew('');
+    setPasswordConfirm('');
+    setPasswordError('');
+    setPasswordSuccess('');
+    setPasswordSectionOpen(false);
     setSettingsOpen(true);
   };
 
@@ -97,6 +122,26 @@ export default function DashboardPage() {
     if (!team?.id) return;
     const token = localStorage.getItem('token');
     if (!token) return;
+
+    // Validace
+    const errors: Record<string, string> = {};
+    if (!settingsContactPerson.trim()) errors.contactPerson = 'Kontaktní osoba je povinná';
+    if (!settingsPhone.trim()) {
+      errors.phone = 'Telefon je povinný';
+    } else if (!/^[\d\s\+\-\(\)]+$/.test(settingsPhone)) {
+      errors.phone = 'Telefon obsahuje neplatné znaky';
+    }
+    if (!settingsEmail.trim()) {
+      errors.email = 'E-mail je povinný';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(settingsEmail)) {
+      errors.email = 'Neplatný formát e-mailu';
+    }
+    if (Object.keys(errors).length > 0) {
+      setSettingsErrors(errors);
+      return;
+    }
+    setSettingsErrors({});
+
     setSavingSettings(true);
     try {
       let logoPath: string | undefined;
@@ -115,11 +160,10 @@ export default function DashboardPage() {
       const updates: Record<string, string | undefined> = {};
       if (settingsTeamName.trim()) updates.teamName = settingsTeamName.trim();
       if (settingsLogoFile) updates.logo = logoPath;
-      if (Object.keys(updates).length === 0) {
-        setSettingsOpen(false);
-        setSavingSettings(false);
-        return;
-      }
+      updates.contactPerson = settingsContactPerson.trim();
+      updates.phone = settingsPhone.trim();
+      updates.email = settingsEmail.trim();
+
       const res = await fetch(`/api/teams/${team.id}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -135,6 +179,41 @@ export default function DashboardPage() {
       }
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const changePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!team?.id) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!passwordOld) { setPasswordError('Zadejte současné heslo'); return; }
+    if (!passwordNew || passwordNew.length < 6) { setPasswordError('Nové heslo musí mít alespoň 6 znaků'); return; }
+    if (passwordNew !== passwordConfirm) { setPasswordError('Hesla se neshodují'); return; }
+
+    setSavingPassword(true);
+    try {
+      const res = await fetch(`/api/teams/${team.id}/change-password`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: passwordOld, newPassword: passwordNew }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPasswordSuccess('Heslo bylo úspěšně změněno');
+        setPasswordOld('');
+        setPasswordNew('');
+        setPasswordConfirm('');
+      } else {
+        setPasswordError(data.error || 'Chyba při změně hesla');
+      }
+    } catch {
+      setPasswordError('Chyba při komunikaci se serverem');
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -490,7 +569,7 @@ export default function DashboardPage() {
       {settingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm" onClick={() => setSettingsOpen(false)}>
           <motion.div
-            className="glass-card rounded-2xl p-6 w-full max-w-md shadow-2xl border border-border"
+            className="glass-card rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-border"
             onClick={(e) => e.stopPropagation()}
             initial={{ opacity: 0, y: 12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -510,28 +589,83 @@ export default function DashboardPage() {
               </div>
               <div>
                 <label className="block text-foreground/60 text-sm mb-1">Logo týmu</label>
-                <div className="flex items-center gap-4">
-                  {(settingsLogoPreview || settingsLogoFile || team?.logo) && (
-                    <img
-                      src={settingsLogoFile ? URL.createObjectURL(settingsLogoFile) : (settingsLogoPreview || team?.logo || '')}
-                      alt="Náhled loga"
-                      className="w-14 h-14 rounded-full object-cover border-2 border-white/10"
-                    />
-                  )}
-                  <div className="flex-1">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        setSettingsLogoFile(f || null);
-                        setSettingsLogoPreview(f ? URL.createObjectURL(f) : null);
-                      }}
-                      className="text-foreground/70 text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:text-sm file:font-medium"
-                    />
-                    <p className="text-foreground/40 text-xs mt-1">Max. 5 MB</p>
-                  </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('settings-logo-input')?.click()}
+                    className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-white/10 hover:border-blue-500/50 transition-colors group flex-shrink-0 cursor-pointer"
+                  >
+                    {(settingsLogoFile || settingsLogoPreview || team?.logo) ? (
+                      <img
+                        src={settingsLogoFile ? URL.createObjectURL(settingsLogoFile) : (settingsLogoPreview || team?.logo || '')}
+                        alt="Logo"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-white/5 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-foreground/30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" /></svg>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    </div>
+                  </button>
+                  <input
+                    id="settings-logo-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      setSettingsLogoFile(f || null);
+                      setSettingsLogoPreview(f ? URL.createObjectURL(f) : null);
+                    }}
+                  />
+                  <p className="text-foreground/40 text-xs">Klikni na logo pro změnu<br />Max. 5 MB</p>
                 </div>
+              </div>
+              <div>
+                <label className="block text-foreground/60 text-sm mb-1">Kontaktní osoba</label>
+                <input
+                  type="text"
+                  value={settingsContactPerson}
+                  onChange={(e) => { setSettingsContactPerson(e.target.value); setSettingsErrors(p => { const n = { ...p }; delete n.contactPerson; return n; }); }}
+                  className={`w-full h-10 px-4 rounded-lg glass-input text-foreground text-sm ${settingsErrors.contactPerson ? 'border-2 border-red-500 bg-red-500/10' : ''}`}
+                  placeholder="Jméno kontaktní osoby"
+                />
+                {settingsErrors.contactPerson && <p className="text-red-400 text-xs mt-1">{settingsErrors.contactPerson}</p>}
+              </div>
+              <div>
+                <label className="block text-foreground/60 text-sm mb-1">Telefon</label>
+                <input
+                  type="tel"
+                  value={settingsPhone}
+                  onChange={(e) => { setSettingsPhone(e.target.value); setSettingsErrors(p => { const n = { ...p }; delete n.phone; return n; }); }}
+                  className={`w-full h-10 px-4 rounded-lg glass-input text-foreground text-sm ${settingsErrors.phone ? 'border-2 border-red-500 bg-red-500/10' : ''}`}
+                  placeholder="+420 123 456 789"
+                />
+                {settingsErrors.phone && <p className="text-red-400 text-xs mt-1">{settingsErrors.phone}</p>}
+              </div>
+              <div>
+                <label className="block text-foreground/60 text-sm mb-1">E-mail</label>
+                <input
+                  type="email"
+                  value={settingsEmail}
+                  onChange={(e) => { setSettingsEmail(e.target.value); setSettingsErrors(p => { const n = { ...p }; delete n.email; return n; }); }}
+                  className={`w-full h-10 px-4 rounded-lg glass-input text-foreground text-sm ${settingsErrors.email ? 'border-2 border-red-500 bg-red-500/10' : ''}`}
+                  placeholder="vas@email.cz"
+                />
+                {settingsErrors.email && <p className="text-red-400 text-xs mt-1">{settingsErrors.email}</p>}
+              </div>
+              <div>
+                <label className="block text-foreground/60 text-sm mb-1">Přihlašovací jméno</label>
+                <input
+                  type="text"
+                  value={team?.username || ''}
+                  disabled
+                  className="w-full h-10 px-4 rounded-lg glass-input text-foreground text-sm opacity-60 cursor-not-allowed"
+                />
+                <p className="text-foreground/40 text-xs mt-1">Přihlašovací jméno nelze změnit</p>
               </div>
               <div className="flex gap-2 pt-2">
                 <button type="button" onClick={() => setSettingsOpen(false)} className="flex-1 h-10 rounded-lg bg-white/5 hover:bg-white/10 text-foreground text-sm font-medium transition-colors">
@@ -542,6 +676,63 @@ export default function DashboardPage() {
                 </button>
               </div>
             </form>
+
+            {/* Změna hesla */}
+            <div className="border-t border-border mt-5 pt-4">
+              <button
+                type="button"
+                onClick={() => setPasswordSectionOpen(!passwordSectionOpen)}
+                className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
+              >
+                Změnit heslo
+              </button>
+              {passwordSectionOpen && (
+                <form onSubmit={changePassword} className="space-y-3 mt-3">
+                  <div>
+                    <label className="block text-foreground/60 text-xs mb-1">Současné heslo</label>
+                    <input
+                      type="password"
+                      value={passwordOld}
+                      onChange={(e) => { setPasswordOld(e.target.value); setPasswordError(''); }}
+                      className="w-full h-10 px-4 rounded-lg glass-input text-foreground text-sm"
+                      placeholder="Zadejte současné heslo"
+                      autoComplete="current-password"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-foreground/60 text-xs mb-1">Nové heslo</label>
+                    <input
+                      type="password"
+                      value={passwordNew}
+                      onChange={(e) => { setPasswordNew(e.target.value); setPasswordError(''); }}
+                      className="w-full h-10 px-4 rounded-lg glass-input text-foreground text-sm"
+                      placeholder="Minimálně 6 znaků"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-foreground/60 text-xs mb-1">Potvrzení nového hesla</label>
+                    <input
+                      type="password"
+                      value={passwordConfirm}
+                      onChange={(e) => { setPasswordConfirm(e.target.value); setPasswordError(''); }}
+                      className="w-full h-10 px-4 rounded-lg glass-input text-foreground text-sm"
+                      placeholder="Zadejte nové heslo znovu"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  {passwordError && <p className="text-red-400 text-sm">{passwordError}</p>}
+                  {passwordSuccess && <p className="text-green-400 text-sm">{passwordSuccess}</p>}
+                  <button
+                    type="submit"
+                    disabled={savingPassword}
+                    className="w-full h-10 rounded-lg bg-white/5 hover:bg-white/10 text-foreground text-sm font-medium disabled:opacity-50 transition-colors border border-border"
+                  >
+                  {savingPassword ? 'Měním heslo...' : 'Změnit heslo'}
+                </button>
+              </form>
+              )}
+            </div>
           </motion.div>
         </div>
       )}

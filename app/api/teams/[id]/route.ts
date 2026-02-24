@@ -116,7 +116,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const allowed = ['backgroundColor', 'coachPlayerId', 'teamName', 'logo', 'overviewLayout'] as const;
+    const allowed = ['backgroundColor', 'coachPlayerId', 'teamName', 'logo', 'overviewLayout', 'contactPerson', 'phone', 'email'] as const;
     const updates: Record<string, unknown> = {};
     for (const key of allowed) {
       if (key in body) {
@@ -147,6 +147,28 @@ export async function PATCH(
             return NextResponse.json({ error: 'Neplatný formát overviewLayout' }, { status: 400 });
           }
           updates[key] = normalized;
+        }
+        if (key === 'contactPerson') {
+          const v = typeof val === 'string' ? val.trim() : '';
+          if (v.length > 0) updates[key] = v;
+        }
+        if (key === 'phone') {
+          const v = typeof val === 'string' ? val.trim() : '';
+          if (v.length > 0) {
+            if (!/^[\d\s\+\-\(\)]+$/.test(v)) {
+              return NextResponse.json({ error: 'Telefon obsahuje neplatné znaky' }, { status: 400 });
+            }
+            updates[key] = v;
+          }
+        }
+        if (key === 'email') {
+          const v = typeof val === 'string' ? val.trim() : '';
+          if (v.length > 0) {
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+              return NextResponse.json({ error: 'Neplatný formát e-mailu' }, { status: 400 });
+            }
+            updates[key] = v;
+          }
         }
       }
     }

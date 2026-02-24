@@ -8,15 +8,6 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import { MotionItem, MotionPage } from '@/components/Motion';
 import { CZECH_FOOTBALL_CLUBS } from '@/lib/czech-football-clubs';
 
-const PRE_DEFINED_LEAGUES = [
-  'Chance liga',
-  'Premier League',
-  'Bundesliga',
-  'Tipsport Extraliga',
-  'NBA',
-  'NFL',
-];
-
 export default function RegisterPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
@@ -24,8 +15,6 @@ export default function RegisterPage() {
     contactPerson: '',
     phone: '',
     email: '',
-    leagues: [] as string[],
-    otherLeague: '', // Pro jinou ligu
     username: '',
     password: '',
     confirmPassword: '',
@@ -39,17 +28,9 @@ export default function RegisterPage() {
   const [clubSuggestions, setClubSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showOptional, setShowOptional] = useState(false);
+  const [useEmailAsUsername, setUseEmailAsUsername] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleLeagueToggle = (league: string) => {
-    setFormData(prev => ({
-      ...prev,
-      leagues: prev.leagues.includes(league)
-        ? prev.leagues.filter(l => l !== league)
-        : [...prev.leagues, league],
-    }));
-  };
 
   // Funkce pro filtrování klubů podle zadaného textu
   const filterClubs = (query: string) => {
@@ -159,12 +140,6 @@ export default function RegisterPage() {
       errors.email = 'Neplatný formát e-mailu';
     }
     
-    // Kontrola, zda je vybrána alespoň jedna liga (buď předdefinovaná, nebo jiná)
-    const hasSelectedLeague = formData.leagues.length > 0 || formData.otherLeague.trim().length > 0;
-    if (!hasSelectedLeague) {
-      errors.leagues = 'Vyberte alespoň jednu ligu nebo zadejte jinou ligu';
-    }
-    
     if (!formData.username.trim()) {
       errors.username = 'Uživatelské jméno je povinné';
     } else if (formData.username.length < 3) {
@@ -235,7 +210,6 @@ export default function RegisterPage() {
           contactPerson: formData.contactPerson,
           phone: formData.phone,
           email: formData.email,
-          leagues: formData.leagues,
           username: formData.username,
           password: formData.password,
           logo: logoPath,
@@ -459,7 +433,7 @@ export default function RegisterPage() {
                 setFormData(prev => ({
                   ...prev,
                   email,
-                  username: !prev.username || prev.username === prev.email ? email : prev.username,
+                  username: useEmailAsUsername ? email : prev.username,
                 }));
                 if (fieldErrors.email) {
                   setFieldErrors(prev => {
@@ -485,101 +459,55 @@ export default function RegisterPage() {
             )}
           </div>
 
-          {/* Ligy - kompaktní chips */}
-          <div>
-            <label className="block text-foreground font-medium mb-2">
-              Liga týmu * (vyberte nebo zadejte)
-            </label>
-            <div className={`space-y-2 ${fieldErrors.leagues ? 'ring-2 ring-red-500/50 rounded-xl p-2' : ''}`}>
-              <div className="flex flex-wrap gap-2">
-                {PRE_DEFINED_LEAGUES.map((league) => (
-                  <button
-                    key={league}
-                    type="button"
-                    onClick={() => {
-                      handleLeagueToggle(league);
-                      if (fieldErrors.leagues) {
-                        setFieldErrors(prev => {
-                          const newErrors = { ...prev };
-                          delete newErrors.leagues;
-                          return newErrors;
-                        });
-                      }
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                      formData.leagues.includes(league)
-                        ? 'bg-blue-500/30 text-white border border-blue-400/50'
-                        : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
-                    }`}
-                  >
-                    {league}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="text"
-                value={formData.otherLeague}
-                onChange={(e) => {
-                  const newOtherLeague = e.target.value;
-                  const trimmedOtherLeague = newOtherLeague.trim();
-                  const currentPreDefinedLeagues = formData.leagues.filter(l => PRE_DEFINED_LEAGUES.includes(l));
-                  if (trimmedOtherLeague) {
-                    setFormData(prev => ({
-                      ...prev,
-                      otherLeague: newOtherLeague,
-                      leagues: [...currentPreDefinedLeagues, trimmedOtherLeague]
-                    }));
-                  } else {
-                    setFormData(prev => ({
-                      ...prev,
-                      otherLeague: newOtherLeague,
-                      leagues: currentPreDefinedLeagues
-                    }));
-                  }
-                  if (fieldErrors.leagues) {
-                    setFieldErrors(prev => {
-                      const newErrors = { ...prev };
-                      delete newErrors.leagues;
-                      return newErrors;
-                    });
-                  }
-                }}
-                className="w-full px-3 py-2 rounded-lg glass-input text-foreground placeholder-muted-foreground text-sm focus:outline-none"
-                placeholder="Nebo zadejte jinou ligu"
-              />
-            </div>
-            {fieldErrors.leagues && (
-              <p className="text-red-400 text-sm mt-1 flex items-center space-x-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>{fieldErrors.leagues}</span>
-              </p>
-            )}
-          </div>
-
-          {/* Uživatelské jméno - předvyplní se z e-mailu */}
+          {/* Uživatelské jméno */}
           <div>
             <label className="block text-foreground font-medium mb-2">
               Přihlašovací jméno *
             </label>
+            <label className="flex items-center gap-2 mb-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={useEmailAsUsername}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setUseEmailAsUsername(checked);
+                  if (checked) {
+                    setFormData(prev => ({ ...prev, username: prev.email }));
+                    if (fieldErrors.username) {
+                      setFieldErrors(prev => {
+                        const newErrors = { ...prev };
+                        delete newErrors.username;
+                        return newErrors;
+                      });
+                    }
+                  }
+                }}
+                className="w-4 h-4 rounded border-border accent-blue-500"
+              />
+              <span className="text-sm text-foreground/70">Použít e-mail jako přihlašovací jméno</span>
+            </label>
             <input
               type="text"
-              value={formData.username}
+              value={useEmailAsUsername ? formData.email : formData.username}
               onChange={(e) => {
-                setFormData({ ...formData, username: e.target.value });
-                if (fieldErrors.username) {
-                  setFieldErrors(prev => {
-                    const newErrors = { ...prev };
-                    delete newErrors.username;
-                    return newErrors;
-                  });
+                if (!useEmailAsUsername) {
+                  setFormData({ ...formData, username: e.target.value });
+                  if (fieldErrors.username) {
+                    setFieldErrors(prev => {
+                      const newErrors = { ...prev };
+                      delete newErrors.username;
+                      return newErrors;
+                    });
+                  }
                 }
               }}
-              className={`w-full px-4 py-3 rounded-xl glass-input text-foreground placeholder-muted-foreground focus:outline-none ${
+              disabled={useEmailAsUsername}
+              className={`w-full px-4 py-3 rounded-xl glass-input text-foreground placeholder-muted-foreground focus:outline-none transition-opacity ${
+                useEmailAsUsername ? 'opacity-60 cursor-not-allowed' : ''
+              } ${
                 fieldErrors.username ? 'border-2 border-red-500 bg-red-500/10' : ''
               }`}
-              placeholder="Můžete použít e-mail"
+              placeholder="Zadejte přihlašovací jméno"
               required
             />
             {fieldErrors.username && (
