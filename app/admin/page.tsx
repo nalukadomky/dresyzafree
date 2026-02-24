@@ -372,7 +372,7 @@ export default function AdminPage() {
                   <td className="p-4">{team.phone}</td>
                   <td className="p-4">
                     <div className="flex flex-wrap gap-1">
-                      {team.leagues.map((league, idx) => (
+                      {(team.leagues ?? []).map((league, idx) => (
                         <span
                           key={idx}
                           className="px-2 py-1 bg-blue-600/30 rounded text-xs"
@@ -555,7 +555,7 @@ export default function AdminPage() {
                   </label>
                   <input
                     type="text"
-                    value={editingTeam.leagues.join(', ')}
+                    value={(editingTeam.leagues ?? []).join(', ')}
                     onChange={(e) =>
                       setEditingTeam({
                         ...editingTeam,
