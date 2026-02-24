@@ -22,7 +22,7 @@ export interface Team {
   contactPerson: string;
   phone: string;
   email: string;
-  leagues: string[];
+  leagues?: string[];
   username: string;
   password: string; // bcrypt hash
   createdAt: string;
