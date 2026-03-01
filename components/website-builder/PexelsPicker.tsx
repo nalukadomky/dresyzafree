@@ -16,28 +16,31 @@ interface Props {
   onClose: () => void;
 }
 
-const PEXELS_KEY = process.env.NEXT_PUBLIC_PEXELS_API_KEY || '';
-
 export function PexelsPicker({ onSelect, onClose }: Props) {
   const [query, setQuery] = useState('');
   const [photos, setPhotos] = useState<PexelsPhoto[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [error, setError] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const search = useCallback(async (q: string) => {
-    if (!q.trim() || !PEXELS_KEY) return;
+    if (!q.trim()) return;
     setLoading(true);
     setSearched(true);
+    setError('');
     try {
-      const res = await fetch(
-        `https://api.pexels.com/v1/search?query=${encodeURIComponent(q)}&per_page=30&orientation=landscape&locale=cs-CZ`,
-        { headers: { Authorization: PEXELS_KEY } }
-      );
+      const res = await fetch(`/api/pexels?query=${encodeURIComponent(q)}&per_page=30`);
       const data = await res.json();
-      setPhotos(data.photos || []);
+      if (data.error) {
+        setError(data.error);
+        setPhotos([]);
+      } else {
+        setPhotos(data.photos || []);
+      }
     } catch {
       setPhotos([]);
+      setError('Nepodařilo se načíst fotky');
     }
     setLoading(false);
   }, []);
@@ -47,16 +50,6 @@ export function PexelsPicker({ onSelect, onClose }: Props) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => search(value), 500);
   };
-
-  if (!PEXELS_KEY) {
-    return (
-      <div className="p-4 rounded-xl bg-surface border border-border text-center">
-        <p className="text-foreground/40 text-sm">
-          Pexels API klíč není nastaven. Přidejte <code className="text-foreground/60">NEXT_PUBLIC_PEXELS_API_KEY</code> do <code className="text-foreground/60">.env.local</code>
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-3">
@@ -122,8 +115,15 @@ export function PexelsPicker({ onSelect, onClose }: Props) {
         </div>
       )}
 
+      {/* Error state */}
+      {!loading && error && (
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-center">
+          <p className="text-red-400 text-sm">{error}</p>
+        </div>
+      )}
+
       {/* Empty state */}
-      {!loading && searched && photos.length === 0 && (
+      {!loading && searched && !error && photos.length === 0 && (
         <div className="text-center py-8">
           <p className="text-foreground/40 text-sm">Žádné výsledky pro &ldquo;{query}&rdquo;</p>
         </div>
