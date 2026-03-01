@@ -37,7 +37,7 @@ interface TacticVariant {
 const MAX_VARIANTS = 5;
 
 // --- Sport definitions ---
-type SportType = 'football' | 'hockey' | 'handball' | 'volleyball' | 'basketball';
+type SportType = 'football' | 'hockey' | 'floorball';
 
 interface SportConfig {
   label: string;
@@ -49,9 +49,7 @@ interface SportConfig {
 const SPORTS: Record<SportType, SportConfig> = {
   football:   { label: 'Fotbal',    emoji: '⚽', viewBox: '0 0 105 68', maxPlayers: 11 },
   hockey:     { label: 'Hokej',     emoji: '🏒', viewBox: '0 0 61 30',  maxPlayers: 6 },
-  handball:   { label: 'Házená',    emoji: '🤾', viewBox: '0 0 40 20',  maxPlayers: 7 },
-  volleyball: { label: 'Volejbal',  emoji: '🏐', viewBox: '0 0 18 9',   maxPlayers: 6 },
-  basketball: { label: 'Basketbal', emoji: '🏀', viewBox: '0 0 28 15',  maxPlayers: 5 },
+  floorball:  { label: 'Florbal',   emoji: '🏑', viewBox: '0 0 40 20',  maxPlayers: 6 },
 };
 
 const STROKE_STYLE = { fill: 'none', stroke: 'rgba(255,255,255,0.6)', strokeWidth: 0.5 } as const;
@@ -121,76 +119,30 @@ function FieldSVG({ sport }: { sport: SportType }) {
       );
     }
 
-    case 'handball': {
-      const hs = { fill: 'none', stroke: 'rgba(255,255,255,0.6)', strokeWidth: 0.2 } as const;
-      const hst = { ...hs, strokeWidth: 0.15 } as const;
-      const hsd = { ...hs, strokeDasharray: '0.4 0.3' } as const;
+    case 'floorball': {
+      const fs = { fill: 'none', stroke: 'rgba(255,255,255,0.6)', strokeWidth: 0.2 } as const;
+      const fst = { ...fs, strokeWidth: 0.15 } as const;
       return (
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 40 20" preserveAspectRatio="xMidYMid meet">
-          <rect x="0.5" y="0.5" width="39" height="19" {...hs} />
-          {/* Center line */}
-          <line x1="20" y1="0.5" x2="20" y2="19.5" {...hs} />
-          {/* Center circle */}
-          <circle cx="20" cy="10" r="3" {...hst} />
-          {/* 6m goal area (semicircles) */}
-          <path d="M 0.5 4 A 6 6 0 0 1 0.5 16" {...hs} />
-          <path d="M 39.5 4 A 6 6 0 0 0 39.5 16" {...hs} />
-          {/* 9m free throw line (dashed semicircles) */}
-          <path d="M 0.5 1 A 9 9 0 0 1 0.5 19" {...hsd} />
-          <path d="M 39.5 1 A 9 9 0 0 0 39.5 19" {...hsd} />
-          {/* 7m penalty marks */}
-          <line x1="7" y1="9.5" x2="7" y2="10.5" stroke="rgba(255,255,255,0.6)" strokeWidth="0.15" />
-          <line x1="33" y1="9.5" x2="33" y2="10.5" stroke="rgba(255,255,255,0.6)" strokeWidth="0.15" />
-          {/* Goal */}
-          <line x1="0.5" y1="7" x2="0.5" y2="13" stroke="rgba(255,255,255,0.8)" strokeWidth="0.25" />
-          <line x1="39.5" y1="7" x2="39.5" y2="13" stroke="rgba(255,255,255,0.8)" strokeWidth="0.25" />
+          {/* Obrys hřiště se zaoblenými rohy (mantinely) */}
+          <rect x="0.5" y="0.5" width="39" height="19" rx="1.5" ry="1.5" {...fs} />
+          {/* Středová čára */}
+          <line x1="20" y1="0.5" x2="20" y2="19.5" {...fs} />
+          {/* Středový kruh */}
+          <circle cx="20" cy="10" r="3" {...fst} />
+          <circle cx="20" cy="10" r="0.15" fill="rgba(255,255,255,0.6)" />
+          {/* Brankoviště — levé (půlkruh) */}
+          <path d="M 0.5 7 A 3 3 0 0 1 0.5 13" {...fs} />
+          {/* Brankoviště — pravé (půlkruh) */}
+          <path d="M 39.5 7 A 3 3 0 0 0 39.5 13" {...fs} />
+          {/* Branka — levá */}
+          <line x1="0.5" y1="8.5" x2="0.5" y2="11.5" stroke="rgba(255,255,255,0.8)" strokeWidth="0.25" />
+          {/* Branka — pravá */}
+          <line x1="39.5" y1="8.5" x2="39.5" y2="11.5" stroke="rgba(255,255,255,0.8)" strokeWidth="0.25" />
         </svg>
       );
     }
 
-    case 'volleyball': {
-      const vs = { fill: 'none', stroke: 'rgba(255,255,255,0.6)', strokeWidth: 0.12 } as const;
-      const vst = { ...vs, strokeWidth: 0.08 } as const;
-      return (
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 18 9" preserveAspectRatio="xMidYMid meet">
-          <rect x="0.3" y="0.3" width="17.4" height="8.4" {...vs} />
-          {/* Net (center line) */}
-          <line x1="9" y1="0.3" x2="9" y2="8.7" stroke="rgba(255,255,255,0.7)" strokeWidth="0.1" />
-          {/* Attack lines (3m from center) */}
-          <line x1="6" y1="0.3" x2="6" y2="8.7" {...vst} />
-          <line x1="12" y1="0.3" x2="12" y2="8.7" {...vst} />
-        </svg>
-      );
-    }
-
-    case 'basketball': {
-      const bs = { fill: 'none', stroke: 'rgba(255,255,255,0.6)', strokeWidth: 0.18 } as const;
-      const bst = { ...bs, strokeWidth: 0.12 } as const;
-      return (
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 28 15" preserveAspectRatio="xMidYMid meet">
-          <rect x="0.5" y="0.5" width="27" height="14" {...bs} />
-          {/* Center line */}
-          <line x1="14" y1="0.5" x2="14" y2="14.5" {...bs} />
-          {/* Center circle */}
-          <circle cx="14" cy="7.5" r="1.8" {...bs} />
-          {/* Paint / key areas */}
-          <rect x="0.5" y="3.5" width="5.8" height="8" {...bs} />
-          <rect x="21.7" y="3.5" width="5.8" height="8" {...bs} />
-          {/* Free throw circles */}
-          <circle cx="6.3" cy="7.5" r="1.8" {...bst} />
-          <circle cx="21.7" cy="7.5" r="1.8" {...bst} />
-          {/* Backboard lines */}
-          <line x1="1.2" y1="5.5" x2="1.2" y2="9.5" stroke="rgba(255,255,255,0.5)" strokeWidth="0.12" />
-          <line x1="26.8" y1="5.5" x2="26.8" y2="9.5" stroke="rgba(255,255,255,0.5)" strokeWidth="0.12" />
-          {/* 3-point arcs */}
-          <path d="M 0.5 2 A 7.5 7.5 0 0 1 0.5 13" {...bst} />
-          <path d="M 27.5 2 A 7.5 7.5 0 0 0 27.5 13" {...bst} />
-          {/* Basket positions */}
-          <circle cx="1.6" cy="7.5" r="0.15" fill="rgba(255,255,255,0.6)" />
-          <circle cx="26.4" cy="7.5" r="0.15" fill="rgba(255,255,255,0.6)" />
-        </svg>
-      );
-    }
   }
 }
 

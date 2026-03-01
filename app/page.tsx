@@ -66,8 +66,8 @@ const featureTabs = [
   {
     id: 'taktika', label: 'Taktika', icon: Crosshair,
     title: 'Taktická tabule',
-    description: 'Přetáhni hráče na hřiště a připrav sestavu. Fotbal, hokej, házená, volejbal i basketbal.',
-    bullets: ['5 sportů, 5 variant sestav', 'Kreslení šipek a tahů', 'Drag & drop hráčů z kádru'],
+    description: 'Přetáhni hráče na hřiště a připrav sestavu. Fotbal, hokej a florbal.',
+    bullets: ['3 sporty, 5 variant sestav', 'Kreslení šipek a tahů', 'Drag & drop hráčů z kádru'],
   },
 ];
 
@@ -893,7 +893,7 @@ export default function Home() {
                   'Hodnocení hráčů po zápase',
                   'Automatický žebříček formy',
                   'Kalendář událostí a docházka',
-                  'Taktická tabule (5 sportů)',
+                  'Taktická tabule (fotbal, hokej, florbal)',
                   'Až 20 hráčů v kádru',
                   'Detailní statistiky výkonnosti',
                   'Export statistik do CSV',
