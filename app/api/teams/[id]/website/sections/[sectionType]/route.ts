@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/middleware';
 import { dbWebsite, type WebsiteSectionType } from '@/lib/db-website';
 
-const VALID_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact'];
+const VALID_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock'];
 
 // GET — fetch a single section
 export async function GET(
@@ -45,11 +45,6 @@ export async function PUT(
     const body = await request.json();
     if (!body.content || typeof body.content !== 'object') {
       return NextResponse.json({ error: 'Content je povinný' }, { status: 400 });
-    }
-
-    // Debug: log what's being saved
-    if (params.sectionType === 'hero') {
-      console.log('[HERO SAVE]', JSON.stringify(body.content).substring(0, 200));
     }
 
     const section = await dbWebsite.sections.upsert(
