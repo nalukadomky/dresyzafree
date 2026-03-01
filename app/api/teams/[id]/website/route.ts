@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/middleware';
 import { dbWebsite } from '@/lib/db-website';
 
+export const dynamic = 'force-dynamic';
+
 // GET — fetch website config + all sections
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   const user = verifyToken(request);

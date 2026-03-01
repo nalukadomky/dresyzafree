@@ -226,35 +226,52 @@ export default function TeamWebBuilder() {
       },
       body: body ? JSON.stringify(body) : undefined,
     });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      console.error(`[API ${method}] ${url} → ${res.status}`, errorData);
+      throw new Error(errorData.error || `Chyba serveru (${res.status})`);
+    }
     return res.json();
   }, [token]);
 
   const saveWebsiteConfig = useCallback(async (updates: Partial<TeamWebsite>) => {
     if (!team) return;
     setSaving(true);
-    const data = await apiCall(`/api/teams/${team.id}/website`, 'PUT', updates);
-    if (data.website) setWebsite(data.website);
-    setSaving(false);
-  }, [team, apiCall]);
+    try {
+      const data = await apiCall(`/api/teams/${team.id}/website`, 'PUT', updates);
+      if (data.website) setWebsite(data.website);
+    } catch (err) {
+      console.error('Chyba při ukládání konfigurace:', err);
+      toast.error('Nepodařilo se uložit konfiguraci webu');
+    } finally {
+      setSaving(false);
+    }
+  }, [team, apiCall, toast]);
 
   const saveSectionContent = useCallback(async (type: WebsiteSectionType, content: unknown) => {
     if (!team) return;
     setSaving(true);
-    const data = await apiCall(`/api/teams/${team.id}/website/sections/${type}`, 'PUT', { content });
-    if (data.section) {
-      setSections(prev => {
-        const idx = prev.findIndex(s => s.sectionType === type);
-        if (idx >= 0) {
-          const next = [...prev];
-          next[idx] = data.section;
-          return next;
-        }
-        return [...prev, data.section];
-      });
+    try {
+      const data = await apiCall(`/api/teams/${team.id}/website/sections/${type}`, 'PUT', { content });
+      if (data.section) {
+        setSections(prev => {
+          const idx = prev.findIndex(s => s.sectionType === type);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = data.section;
+            return next;
+          }
+          return [...prev, data.section];
+        });
+      }
+      setHasUnsavedChanges(false);
+    } catch (err) {
+      console.error('Chyba při ukládání sekce:', type, err);
+      toast.error(`Nepodařilo se uložit sekci "${SECTION_LABELS[type]}"`);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setHasUnsavedChanges(false);
-  }, [team, apiCall]);
+  }, [team, apiCall, toast]);
 
   const debouncedSave = useCallback((type: WebsiteSectionType, content: unknown) => {
     const timers = saveTimersRef.current;
@@ -272,19 +289,32 @@ export default function TeamWebBuilder() {
     saveTimersRef.current.forEach(timer => clearTimeout(timer));
     saveTimersRef.current.clear();
     setSaving(true);
+    let hasError = false;
     for (const type of sectionOrder) {
       // Use pending (freshest) content, then fall back to state, then defaults
       const pending = pendingContentRef.current.get(type);
       const fromState = sections.find(s => s.sectionType === type)?.content;
       const content = pending || fromState || DEFAULTS[type];
-      await saveSectionContent(type, content);
+      try {
+        await saveSectionContent(type, content);
+      } catch {
+        hasError = true;
+      }
+    }
+    // Also save sectionOrder to ensure DB has latest order
+    try {
+      await saveWebsiteConfig({ sectionOrder } as Partial<TeamWebsite>);
+    } catch {
+      hasError = true;
     }
     pendingContentRef.current.clear();
     setSaving(false);
-    setHasUnsavedChanges(false);
-    setJustSaved(true);
-    setTimeout(() => setJustSaved(false), 2000);
-  }, [sectionOrder, sections, saveSectionContent]);
+    if (!hasError) {
+      setHasUnsavedChanges(false);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000);
+    }
+  }, [sectionOrder, sections, saveSectionContent, saveWebsiteConfig]);
 
   // ── Beforeunload guard ────────────────────────────────────────
 

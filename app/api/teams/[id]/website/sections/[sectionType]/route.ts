@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/middleware';
 import { dbWebsite, type WebsiteSectionType } from '@/lib/db-website';
 
+export const dynamic = 'force-dynamic';
+
 const VALID_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock'];
 
 // GET — fetch a single section

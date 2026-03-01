@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbWebsite } from '@/lib/db-website';
 
+export const dynamic = 'force-dynamic';
+
 // GET — public website data (no auth required)
 export async function GET(
   request: NextRequest,
