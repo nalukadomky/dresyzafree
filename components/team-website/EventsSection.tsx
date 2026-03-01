@@ -41,7 +41,8 @@ function formatDate(dateStr: string): string {
 
 export function EventsSection({ content, events, primaryColor }: Props) {
   const isDark = content.variant === 'dark';
-  const filtered = events
+  const filtered = [...events]
+    .sort((a, b) => a.date.localeCompare(b.date))
     .filter((e) => {
       if (e.eventType === 'training' && !content.showTrainings) return false;
       if ((e.eventType === 'friendly_match' || e.eventType === 'competitive_match') && !content.showMatches) return false;
