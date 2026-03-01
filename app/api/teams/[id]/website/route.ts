@@ -37,7 +37,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     if (typeof body.primaryColor === 'string') updates.primaryColor = body.primaryColor;
     if (typeof body.secondaryColor === 'string') updates.secondaryColor = body.secondaryColor;
     if (Array.isArray(body.sectionOrder)) {
-      const valid = ['hero', 'team', 'events', 'contact'];
+      const valid = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock'];
       const filtered = body.sectionOrder.filter((s: string) => valid.includes(s));
       updates.sectionOrder = filtered;
     }
