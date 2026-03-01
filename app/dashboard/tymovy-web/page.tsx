@@ -16,6 +16,7 @@ import type {
   AboutContent,
   GalleryContent,
   TextBlockContent,
+  FanVotingContent,
 } from '@/lib/db-website';
 import { generateSlug, DEFAULT_SECTION_CONTENT } from '@/lib/db-website';
 import { EditableSection } from '@/components/website-builder/EditableSection';
@@ -27,6 +28,7 @@ import { ContactEditor } from '@/components/website-builder/ContactEditor';
 import { AboutEditor } from '@/components/website-builder/AboutEditor';
 import { GalleryEditor } from '@/components/website-builder/GalleryEditor';
 import { TextBlockEditor } from '@/components/website-builder/TextBlockEditor';
+import { FanVotingEditor } from '@/components/website-builder/FanVotingEditor';
 import { HeroSection } from '@/components/team-website/HeroSection';
 import { TeamSection } from '@/components/team-website/TeamSection';
 import { EventsSection } from '@/components/team-website/EventsSection';
@@ -34,6 +36,7 @@ import { ContactSection } from '@/components/team-website/ContactSection';
 import { AboutSection } from '@/components/team-website/AboutSection';
 import { GallerySection } from '@/components/team-website/GallerySection';
 import { TextBlockSection } from '@/components/team-website/TextBlockSection';
+import { FanVotingSection } from '@/components/team-website/FanVotingSection';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -61,7 +64,7 @@ interface PlayerData {
   photoUrl?: string;
 }
 
-const ALL_SECTION_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock'];
+const ALL_SECTION_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock', 'fan-voting'];
 
 const SECTION_LABELS: Record<WebsiteSectionType, string> = {
   hero: 'Úvod',
@@ -71,6 +74,7 @@ const SECTION_LABELS: Record<WebsiteSectionType, string> = {
   about: 'O nás',
   gallery: 'Galerie',
   textblock: 'Textové pole',
+  'fan-voting': 'Hráč zápasu',
 };
 
 const SECTION_ICONS: Record<WebsiteSectionType, string> = {
@@ -81,6 +85,7 @@ const SECTION_ICONS: Record<WebsiteSectionType, string> = {
   about: '📝',
   gallery: '🖼️',
   textblock: '📄',
+  'fan-voting': '⭐',
 };
 
 const SECTION_DESCRIPTIONS: Record<WebsiteSectionType, string> = {
@@ -91,6 +96,7 @@ const SECTION_DESCRIPTIONS: Record<WebsiteSectionType, string> = {
   about: 'Sekce s textem o vašem týmu, historii a hodnotách',
   gallery: 'Fotogalerie s lightboxem a volitelným popiskem',
   textblock: 'Volný textový blok s nastavením řádkování a mezer',
+  'fan-voting': 'Hlasování fanoušků o nejlepšího hráče posledního zápasu',
 };
 
 const DEFAULTS: Record<WebsiteSectionType, unknown> = {
@@ -101,6 +107,7 @@ const DEFAULTS: Record<WebsiteSectionType, unknown> = {
   about: DEFAULT_SECTION_CONTENT.about,
   gallery: DEFAULT_SECTION_CONTENT.gallery,
   textblock: DEFAULT_SECTION_CONTENT.textblock,
+  'fan-voting': { title: 'Hráč zápasu', variant: 'light' },
 };
 
 // ── Templates ─────────────────────────────────────────────────────────
@@ -404,15 +411,20 @@ export default function TeamWebBuilder() {
       return;
     }
     setPublishing(true);
-    const data = await apiCall(`/api/teams/${team.id}/website/publish`, 'POST', {
-      published: !website.published,
-    });
-    if (data.error) {
-      toast.error(data.error);
-    } else {
-      setWebsite(prev => prev ? { ...prev, published: data.published } : prev);
+    try {
+      const data = await apiCall(`/api/teams/${team.id}/website/publish`, 'POST', {
+        published: !website.published,
+      });
+      if (data.error) {
+        toast.error(data.error);
+      } else {
+        setWebsite(prev => prev ? { ...prev, published: data.published } : prev);
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Nepodařilo se změnit stav publikace');
+    } finally {
+      setPublishing(false);
     }
-    setPublishing(false);
   };
 
   // ── Render section in preview ───────────────────────────────────
@@ -474,6 +486,15 @@ export default function TeamWebBuilder() {
           <TextBlockSection
             content={getSectionContent('textblock') as TextBlockContent}
             primaryColor={primaryColor}
+          />
+        );
+      case 'fan-voting':
+        return (
+          <FanVotingSection
+            content={getSectionContent('fan-voting') as FanVotingContent}
+            players={players}
+            primaryColor={primaryColor}
+            teamName={team?.teamName}
           />
         );
       default:
@@ -555,6 +576,13 @@ export default function TeamWebBuilder() {
           <TextBlockEditor
             content={getSectionContent('textblock') as TextBlockContent}
             onChange={(c) => updateSectionContent('textblock', c)}
+          />
+        );
+      case 'fan-voting':
+        return (
+          <FanVotingEditor
+            content={getSectionContent('fan-voting') as FanVotingContent}
+            onChange={(c) => updateSectionContent('fan-voting', c)}
           />
         );
       default:

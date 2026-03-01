@@ -5,7 +5,7 @@ const client = supabaseAdmin ?? supabase;
 
 // ── Types ────────────────────────────────────────────────────────────
 
-export type WebsiteSectionType = 'hero' | 'team' | 'events' | 'contact' | 'about' | 'gallery' | 'textblock';
+export type WebsiteSectionType = 'hero' | 'team' | 'events' | 'contact' | 'about' | 'gallery' | 'textblock' | 'fan-voting';
 
 export interface TeamWebsite {
   id: string;
@@ -22,7 +22,7 @@ export interface TeamWebsiteSection {
   id: string;
   teamId: string;
   sectionType: WebsiteSectionType;
-  content: HeroContent | TeamMembersContent | EventsContent | ContactContent | AboutContent | GalleryContent | TextBlockContent;
+  content: HeroContent | TeamMembersContent | EventsContent | ContactContent | AboutContent | GalleryContent | TextBlockContent | FanVotingContent;
   createdAt: string;
   updatedAt: string;
 }
@@ -133,12 +133,27 @@ export interface TextBlockContent {
   variant?: SectionVariant;
 }
 
+export interface FanVotingContent {
+  title: string;
+  variant?: SectionVariant;
+}
+
+export interface LastMatchData {
+  id: string;
+  date: string;
+  opponent?: string;
+  goalsFor: number;
+  goalsAgainst: number;
+  startTime?: string;
+}
+
 export interface PublicWebsiteData {
   team: { id: string; teamName: string; logo?: string };
   website: TeamWebsite;
   sections: TeamWebsiteSection[];
   events: { id: string; date: string; eventType: string; location?: string; opponent?: string; startTime?: string; note?: string }[];
   players: { id: string; name: string; jerseyNumber?: number; photoUrl?: string }[];
+  lastMatch?: LastMatchData;
 }
 
 // ── Mappers ──────────────────────────────────────────────────────────
@@ -211,6 +226,10 @@ export const DEFAULT_SECTION_CONTENT: Record<WebsiteSectionType, unknown> = {
     letterSpacing: 0,
     paddingY: 48,
   } as TextBlockContent,
+  'fan-voting': {
+    title: 'Hráč zápasu',
+    variant: 'light',
+  } as FanVotingContent,
 };
 
 // ── Slug helpers ─────────────────────────────────────────────────────
@@ -381,7 +400,7 @@ export const dbWebsite = {
 
     // 3. Get sections + upcoming events + players in parallel
     const today = new Date().toISOString().split('T')[0];
-    const [sectionsRes, eventsRes, playersRes] = await Promise.all([
+    const [sectionsRes, eventsRes, playersRes, lastMatchRes] = await Promise.all([
       client!.from('team_website_sections').select('*').eq('team_id', teamId),
       client!.from('events').select('id, date, event_type, location, opponent, start_time, note')
         .eq('team_id', teamId)
@@ -389,6 +408,11 @@ export const dbWebsite = {
         .order('date', { ascending: true })
         .limit(10),
       client!.from('players').select('id, name, jersey_number, photo_url').eq('team_id', teamId),
+      client!.from('matches').select('id, date, opponent, goals_for, goals_against, start_time')
+        .eq('team_id', teamId)
+        .not('scored_at', 'is', null)
+        .order('scored_at', { ascending: false })
+        .limit(1),
     ]);
 
     const sections = (sectionsRes.data || []).map(mapSection);
@@ -407,6 +431,15 @@ export const dbWebsite = {
       jerseyNumber: (p.jersey_number as number | null) ?? undefined,
       photoUrl: (p.photo_url as string) || undefined,
     }));
+    const lastMatchRow = lastMatchRes.data?.[0] as Record<string, unknown> | undefined;
+    const lastMatch: LastMatchData | undefined = lastMatchRow ? {
+      id: lastMatchRow.id as string,
+      date: lastMatchRow.date as string,
+      opponent: (lastMatchRow.opponent as string) || undefined,
+      goalsFor: lastMatchRow.goals_for as number,
+      goalsAgainst: lastMatchRow.goals_against as number,
+      startTime: (lastMatchRow.start_time as string) || undefined,
+    } : undefined;
 
     return {
       team: {
@@ -418,6 +451,7 @@ export const dbWebsite = {
       sections,
       events,
       players,
+      lastMatch,
     };
   },
 };

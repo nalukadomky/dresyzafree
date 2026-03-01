@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       const team = await db.teams.getById(params.id);
       if (!team?.websiteSlug) {
         return NextResponse.json(
-          { error: 'Nejdřív nastavte URL adresu webu (slug)' },
+          { error: 'Nejdřív nastavte URL adresu webu v nastavení' },
           { status: 400 }
         );
       }

@@ -55,5 +55,5 @@ export default function PublicTeamWebPage() {
     );
   }
 
-  return <TeamWebsite data={data} />;
+  return <TeamWebsite data={data} slug={slug} />;
 }

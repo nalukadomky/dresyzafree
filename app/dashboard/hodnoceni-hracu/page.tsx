@@ -27,6 +27,9 @@ import { DatePicker } from '@/components/ui/datepicker';
 import { useToast } from '@/components/ui/toast';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import confetti from 'canvas-confetti';
+import dynamic from 'next/dynamic';
+
+const FanVoteBarChart = dynamic(() => import('@/components/FanVoteBarChart'), { ssr: false });
 
 // --- Time input component (keyboard-friendly HH:MM) ---
 function TimeInput({ value, onChange, className, required }: { value: string; onChange: (v: string) => void; className?: string; required?: boolean }) {
@@ -286,14 +289,13 @@ interface AttendanceStat {
   matchCount: number;
 }
 
-type Tab = 'dashboard' | 'manage' | 'vote' | 'leaderboard' | 'canadian' | 'calendar' | 'taktika';
+type Tab = 'dashboard' | 'manage' | 'vote' | 'leaderboard' | 'canadian' | 'calendar' | 'taktika' | 'fanousci';
 type OverviewCardId = 'lastMatch' | 'upcomingEvents' | 'teamForm';
 type OverviewCardSize = 'small' | 'wide' | 'full';
 type OverviewCardLayoutItem = { id: OverviewCardId; order: number; size: OverviewCardSize; visible: boolean };
 type TeamOverviewLayout = { version: 1; cards: OverviewCardLayoutItem[] };
 
-const TAB_ORDER_KEY = 'hodnoceni-tab-order-v1';
-const DEFAULT_TAB_ORDER: Tab[] = ['dashboard', 'manage', 'vote', 'leaderboard', 'canadian', 'calendar', 'taktika'];
+const DEFAULT_TAB_ORDER: Tab[] = ['dashboard', 'manage', 'vote', 'leaderboard', 'canadian', 'calendar', 'taktika', 'fanousci'];
 const OVERVIEW_CARD_IDS: OverviewCardId[] = ['lastMatch', 'upcomingEvents', 'teamForm'];
 const DEFAULT_OVERVIEW_LAYOUT: TeamOverviewLayout = {
   version: 1,
@@ -311,17 +313,10 @@ function tabLabel(tab: Tab): string {
   if (tab === 'leaderboard') return 'Žebříček';
   if (tab === 'canadian') return 'Kanadské bodování';
   if (tab === 'calendar') return 'Události/docházka';
-  return 'Taktika';
+  if (tab === 'taktika') return 'Taktika';
+  return 'Fanoušci';
 }
 
-function normalizeTabOrder(value: unknown): Tab[] {
-  if (!Array.isArray(value)) return DEFAULT_TAB_ORDER;
-  const isTab = (v: unknown): v is Tab => typeof v === 'string' && DEFAULT_TAB_ORDER.includes(v as Tab);
-  const incoming = value.filter(isTab);
-  const unique = Array.from(new Set(incoming));
-  const missing = DEFAULT_TAB_ORDER.filter((t) => !unique.includes(t));
-  return [...unique, ...missing];
-}
 
 function overviewCardLabel(id: OverviewCardId): string {
   if (id === 'lastMatch') return 'Poslední zápas';
@@ -445,59 +440,6 @@ function SortableOverviewCard({
         )}
         {children}
       </div>
-    </Reorder.Item>
-  );
-}
-
-function ReorderableTabItem({
-  tabKey,
-  active,
-  onSelect,
-}: {
-  tabKey: Tab;
-  active: boolean;
-  onSelect: (tab: Tab) => void;
-}) {
-  const dragControls = useDragControls();
-  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearPressTimer = () => {
-    if (pressTimerRef.current) {
-      clearTimeout(pressTimerRef.current);
-      pressTimerRef.current = null;
-    }
-  };
-
-  return (
-    <Reorder.Item
-      value={tabKey}
-      drag="x"
-      dragListener={false}
-      dragControls={dragControls}
-      className="shrink-0"
-      whileDrag={{ scale: 1.02, zIndex: 40 }}
-    >
-      <button
-        type="button"
-        onClick={() => onSelect(tabKey)}
-        onPointerDown={(e) => {
-          clearPressTimer();
-          pressTimerRef.current = setTimeout(() => {
-            dragControls.start(e);
-          }, 220);
-        }}
-        onPointerUp={clearPressTimer}
-        onPointerLeave={clearPressTimer}
-        onPointerCancel={clearPressTimer}
-        className={`shrink-0 px-3 py-2 sm:px-4 rounded-xl font-medium transition-all text-sm sm:text-base touch-none ${
-          active
-            ? 'bg-blue-500/30 text-foreground border border-blue-400/50'
-            : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
-        }`}
-        title="Podržte a přetáhněte pro změnu pořadí"
-      >
-        {tabLabel(tabKey)}
-      </button>
     </Reorder.Item>
   );
 }
@@ -982,11 +924,10 @@ function HodnoceniHracuContent() {
   const [dashboardCardsLoading, setDashboardCardsLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [tab, setTab] = useState<Tab>(
-    tabParam === 'dashboard' || tabParam === 'calendar' || tabParam === 'vote' || tabParam === 'leaderboard' || tabParam === 'canadian' || tabParam === 'taktika'
+    tabParam === 'dashboard' || tabParam === 'calendar' || tabParam === 'vote' || tabParam === 'leaderboard' || tabParam === 'canadian' || tabParam === 'taktika' || tabParam === 'fanousci'
       ? tabParam as Tab
       : 'dashboard'
   );
-  const [tabOrder, setTabOrder] = useState<Tab[]>(DEFAULT_TAB_ORDER);
   const [overviewLayout, setOverviewLayout] = useState<OverviewCardLayoutItem[]>(DEFAULT_OVERVIEW_LAYOUT.cards);
   const [overviewDraft, setOverviewDraft] = useState<OverviewCardLayoutItem[]>(DEFAULT_OVERVIEW_LAYOUT.cards);
   const [overviewEditMode, setOverviewEditMode] = useState(false);
@@ -1082,6 +1023,11 @@ function HodnoceniHracuContent() {
   const [createdEventLink, setCreatedEventLink] = useState<string | null>(null);
   const [eventAttendanceSummary, setEventAttendanceSummary] = useState<Record<string, { attended: number; notAttended: number; noResponse: number }>>({});
 
+  // Fan votes
+  const [fanVoteData, setFanVoteData] = useState<{ matchId: string; date: string; opponent: string; results: { playerId: string; playerName: string; voteCount: number }[]; totalVotes: number }[]>([]);
+  const [fanVoteLoading, setFanVoteLoading] = useState(false);
+  const [fanVoteLoaded, setFanVoteLoaded] = useState(false);
+
   const headers = () => ({
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
@@ -1120,26 +1066,8 @@ function HodnoceniHracuContent() {
 
   useEffect(() => {
     const t = searchParams.get('tab');
-    if (t === 'dashboard' || t === 'calendar' || t === 'vote' || t === 'leaderboard' || t === 'canadian' || t === 'taktika') setTab(t as Tab);
+    if (t === 'dashboard' || t === 'calendar' || t === 'vote' || t === 'leaderboard' || t === 'canadian' || t === 'taktika' || t === 'fanousci') setTab(t as Tab);
   }, [searchParams]);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(TAB_ORDER_KEY);
-      if (!raw) return;
-      setTabOrder(normalizeTabOrder(JSON.parse(raw)));
-    } catch {
-      setTabOrder(DEFAULT_TAB_ORDER);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabOrder));
-    } catch {
-      // ignore storage errors
-    }
-  }, [tabOrder]);
 
   useEffect(() => {
     if (!teamId || !token) return;
@@ -1194,6 +1122,24 @@ function HodnoceniHracuContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
+
+  useEffect(() => {
+    if (!initialDataReady || !teamId || !token) return;
+    if (tab === 'fanousci' && !fanVoteLoaded) {
+      setFanVoteLoading(true);
+      fetch(`/api/teams/${teamId}/fan-votes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => (r.ok ? r.json() : { matches: [] }))
+        .then((d: { matches?: typeof fanVoteData }) => {
+          setFanVoteData(d?.matches || []);
+          setFanVoteLoaded(true);
+        })
+        .catch(() => setFanVoteData([]))
+        .finally(() => setFanVoteLoading(false));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, initialDataReady, teamId, token]);
 
   useEffect(() => {
     if (!initialDataReady || !teamId || !token) return;
@@ -2137,16 +2083,22 @@ function HodnoceniHracuContent() {
       <MotionPage className="w-full max-w-7xl mx-auto relative z-10 pt-12 sm:pt-14">
         <h1 className="text-xl sm:text-2xl font-semibold text-foreground mb-4 sm:mb-6">Týmová zóna</h1>
 
-        <Reorder.Group
-          axis="x"
-          values={tabOrder}
-          onReorder={(nextOrder) => setTabOrder(normalizeTabOrder(nextOrder))}
-          className="flex gap-1.5 sm:gap-2 mb-4 sm:mb-6 overflow-x-auto pb-1 -mx-1 flex-nowrap sm:flex-wrap"
-        >
-          {tabOrder.map((t) => (
-            <ReorderableTabItem key={t} tabKey={t} active={tab === t} onSelect={setTab} />
+        <div className="flex gap-1.5 sm:gap-2 mb-4 sm:mb-6 overflow-x-auto pb-1 -mx-1 flex-nowrap sm:flex-wrap">
+          {DEFAULT_TAB_ORDER.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={`shrink-0 px-3 py-2 sm:px-4 rounded-xl font-medium transition-all text-sm sm:text-base ${
+                tab === t
+                  ? 'bg-blue-500/30 text-foreground border border-blue-400/50'
+                  : 'bg-surface text-foreground/70 hover:bg-surface-hover border border-border'
+              }`}
+            >
+              {tabLabel(t)}
+            </button>
           ))}
-        </Reorder.Group>
+        </div>
 
         {tab === 'dashboard' && (
           <div className="space-y-4">
@@ -3498,6 +3450,39 @@ function HodnoceniHracuContent() {
               </p>
             </div>
             <TacticsBoard players={players.map((p) => ({ id: p.id, name: p.name, jerseyNumber: p.jerseyNumber }))} />
+          </div>
+        )}
+
+        {tab === 'fanousci' && (
+          <div className="space-y-4 sm:space-y-6">
+            <h2 className="text-base sm:text-lg font-semibold text-foreground">Hlasování fanoušků – Hráč zápasu</h2>
+            <p className="text-foreground/60 text-sm">Výsledky hlasování fanoušků na veřejném týmovém webu.</p>
+            {fanVoteLoading ? (
+              <div className="flex justify-center py-12"><LoadingSpinner /></div>
+            ) : fanVoteData.length === 0 ? (
+              <div className="glass-card rounded-2xl p-8 text-center border border-border">
+                <div className="text-4xl mb-3 opacity-40">🗳️</div>
+                <p className="text-foreground/60 font-medium">Zatím žádné hlasy</p>
+                <p className="text-foreground/40 text-sm mt-1">Hlasy se zobrazí po prvním hlasování fanoušků na vašem týmovém webu.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {fanVoteData.map((m) => (
+                  <div key={m.matchId} className="glass-card rounded-2xl p-4 sm:p-5 border border-border">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-foreground font-semibold text-sm sm:text-base">
+                        {m.opponent ? `vs ${m.opponent}` : 'Zápas'}
+                        <span className="text-foreground/50 font-normal ml-2 text-xs">
+                          {new Date(m.date + 'T12:00:00').toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </span>
+                      </h3>
+                      <span className="text-foreground/50 text-xs">{m.totalVotes} {m.totalVotes === 1 ? 'hlas' : m.totalVotes < 5 ? 'hlasy' : 'hlasů'}</span>
+                    </div>
+                    <FanVoteBarChart results={m.results} totalVotes={m.totalVotes} />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

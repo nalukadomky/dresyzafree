@@ -203,3 +203,33 @@ ALTER TABLE ratings DROP CONSTRAINT IF EXISTS ratings_percentage_check;
 ALTER TABLE ratings DROP CONSTRAINT IF EXISTS ratings_score_check;
 ALTER TABLE ratings ADD CONSTRAINT ratings_score_check
   CHECK (percentage >= 0 AND percentage <= 10);
+
+-- scored_at: timestamp when the score was last recorded
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS scored_at TIMESTAMPTZ;
+
+-- Backfill: for existing matches that already have a score, set scored_at to created_at
+UPDATE matches
+SET scored_at = created_at
+WHERE scored_at IS NULL
+  AND goals_for IS NOT NULL
+  AND goals_against IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_matches_scored_at
+ON matches(team_id, scored_at DESC NULLS LAST);
+
+-- fan_votes: public fan voting for player of the match
+CREATE TABLE IF NOT EXISTS fan_votes (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  voter_identifier TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(match_id, voter_identifier)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fan_votes_match ON fan_votes(match_id);
+CREATE INDEX IF NOT EXISTS idx_fan_votes_player ON fan_votes(player_id);
+
+ALTER TABLE fan_votes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all for fan_votes" ON fan_votes;
+CREATE POLICY "Allow all for fan_votes" ON fan_votes FOR ALL USING (true) WITH CHECK (true);

@@ -1,6 +1,6 @@
 'use client';
 
-import type { PublicWebsiteData, HeroContent, TeamMembersContent, EventsContent, ContactContent, AboutContent, GalleryContent, TextBlockContent, WebsiteSectionType } from '@/lib/db-website';
+import type { PublicWebsiteData, HeroContent, TeamMembersContent, EventsContent, ContactContent, AboutContent, GalleryContent, TextBlockContent, FanVotingContent, WebsiteSectionType } from '@/lib/db-website';
 import { HeroSection } from './HeroSection';
 import { TeamSection } from './TeamSection';
 import { EventsSection } from './EventsSection';
@@ -8,12 +8,14 @@ import { ContactSection } from './ContactSection';
 import { AboutSection } from './AboutSection';
 import { GallerySection } from './GallerySection';
 import { TextBlockSection } from './TextBlockSection';
+import { FanVotingSection } from './FanVotingSection';
 
 interface Props {
   data: PublicWebsiteData;
+  slug?: string;
 }
 
-export function TeamWebsite({ data }: Props) {
+export function TeamWebsite({ data, slug }: Props) {
   const { team, website, sections, events, players } = data;
   const sectionMap = new Map(sections.map((s) => [s.sectionType, s]));
 
@@ -80,6 +82,18 @@ export function TeamWebsite({ data }: Props) {
             key="textblock"
             content={section.content as TextBlockContent}
             primaryColor={website.primaryColor}
+          />
+        );
+      case 'fan-voting':
+        return (
+          <FanVotingSection
+            key="fan-voting"
+            content={section.content as FanVotingContent}
+            lastMatch={data.lastMatch}
+            players={players}
+            primaryColor={website.primaryColor}
+            teamName={team.teamName}
+            slug={slug}
           />
         );
       default:

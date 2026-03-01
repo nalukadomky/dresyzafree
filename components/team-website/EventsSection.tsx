@@ -85,7 +85,7 @@ export function EventsSection({ content, events, primaryColor }: Props) {
               Nové události se zde zobrazí automaticky po jejich naplánování.
             </p>
           </div>
-        ) : (
+        ) : filtered.length > 0 ? (
           <div className="space-y-3">
             {filtered.map((event) => (
               <div
@@ -137,7 +137,7 @@ export function EventsSection({ content, events, primaryColor }: Props) {
               </div>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
     </section>
   );
