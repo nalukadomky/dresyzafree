@@ -9,9 +9,11 @@ interface Props {
 
 export function ContactSection({ content, primaryColor }: Props) {
   const isDark = content.variant === 'dark';
+  const hasPeople = content.people && content.people.length > 0 && content.people.some(p => p.name);
   const hasContent =
     content.address || content.phone || content.email ||
-    content.socialLinks?.facebook || content.socialLinks?.instagram || content.socialLinks?.web;
+    content.socialLinks?.facebook || content.socialLinks?.instagram || content.socialLinks?.web ||
+    hasPeople;
 
   if (!hasContent) return null;
 
@@ -73,6 +75,57 @@ export function ContactSection({ content, primaryColor }: Props) {
                   {content.email}
                 </a>
               )}
+            </div>
+          )}
+
+          {/* Contact people */}
+          {hasPeople && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              {content.people!.filter(p => p.name).map((person, idx) => (
+                <div
+                  key={idx}
+                  className="rounded-xl p-4 text-left"
+                  style={{
+                    background: isDark ? '#1E293B' : '#F8FAFC',
+                    border: isDark ? '1px solid #334155' : '1px solid #F1F5F9',
+                  }}
+                >
+                  <p
+                    className="font-semibold text-sm"
+                    style={{ color: isDark ? '#F1F5F9' : '#1E293B' }}
+                  >
+                    {person.name}
+                  </p>
+                  <p
+                    className="text-xs mt-0.5"
+                    style={{ color: primaryColor }}
+                  >
+                    {person.role}
+                  </p>
+                  {(person.phone || person.email) && (
+                    <div className="mt-2 space-y-1">
+                      {person.phone && (
+                        <a
+                          href={`tel:${person.phone.replace(/\s/g, '')}`}
+                          className="block text-xs hover:opacity-80 transition-opacity"
+                          style={{ color: isDark ? '#94A3B8' : '#64748B' }}
+                        >
+                          📞 {person.phone}
+                        </a>
+                      )}
+                      {person.email && (
+                        <a
+                          href={`mailto:${person.email}`}
+                          className="block text-xs hover:opacity-80 transition-opacity"
+                          style={{ color: isDark ? '#94A3B8' : '#64748B' }}
+                        >
+                          ✉️ {person.email}
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 

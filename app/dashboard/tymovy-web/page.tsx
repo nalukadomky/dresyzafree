@@ -164,6 +164,8 @@ export default function TeamWebBuilder() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showAddSection, setShowAddSection] = useState<number | null>(null);
@@ -250,12 +252,38 @@ export default function TeamWebBuilder() {
       });
     }
     setSaving(false);
+    setHasUnsavedChanges(false);
   }, [team, apiCall]);
 
   const debouncedSave = useCallback((type: WebsiteSectionType, content: unknown) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => saveSectionContent(type, content), 1500);
   }, [saveSectionContent]);
+
+  const saveAllNow = useCallback(async () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSaving(true);
+    for (const type of sectionOrder) {
+      const section = sections.find(s => s.sectionType === type);
+      const content = section?.content || DEFAULTS[type];
+      await apiCall(`/api/teams/${team?.id}/website/sections/${type}`, 'PUT', { content });
+    }
+    setSaving(false);
+    setHasUnsavedChanges(false);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 2000);
+  }, [sectionOrder, sections, team, apiCall]);
+
+  // ── Beforeunload guard ────────────────────────────────────────
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedChanges]);
 
   // ── Section management ──────────────────────────────────────────
 
@@ -274,6 +302,7 @@ export default function TeamWebBuilder() {
       }
       return [...prev, { id: '', teamId: team?.id || '', sectionType: type, content: content as TeamWebsiteSection['content'], createdAt: '', updatedAt: '' }];
     });
+    setHasUnsavedChanges(true);
     debouncedSave(type, content);
   };
 
@@ -357,6 +386,8 @@ export default function TeamWebBuilder() {
             teamName={team?.teamName || ''}
             logo={team?.logo}
             primaryColor={primaryColor}
+            isEditing={true}
+            onContentChange={(c) => updateSectionContent('hero', c)}
           />
         );
       case 'team':
@@ -608,9 +639,50 @@ export default function TeamWebBuilder() {
               </svg>
               Šablony
             </button>
-            {saving && (
-              <span className="text-xs text-foreground/40 animate-pulse">Ukládám...</span>
-            )}
+            <button
+              onClick={saveAllNow}
+              disabled={saving || (!hasUnsavedChanges && !saving)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                saving
+                  ? 'bg-blue-500/10 text-blue-400 animate-pulse cursor-wait'
+                  : justSaved
+                  ? 'bg-green-500/15 text-green-500 border border-green-500/30'
+                  : hasUnsavedChanges
+                  ? 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm'
+                  : 'bg-surface border border-border text-foreground/30 cursor-default'
+              }`}
+            >
+              {saving ? (
+                <>
+                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Ukládám…
+                </>
+              ) : justSaved ? (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Uloženo
+                </>
+              ) : hasUnsavedChanges ? (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                  </svg>
+                  Uložit verzi
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Uloženo
+                </>
+              )}
+            </button>
           </div>
 
           {/* Center: Slug */}
@@ -830,7 +902,7 @@ export default function TeamWebBuilder() {
       </SectionDrawer>
 
       {/* ── Add section modal (envelope.so style) ────────── */}
-      {showAddSection !== null && availableSections.length > 0 && (
+      {showAddSection !== null && (
         <>
           <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddSection(null)} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -840,25 +912,42 @@ export default function TeamWebBuilder() {
                 <button onClick={() => setShowAddSection(null)} className="text-foreground/30 hover:text-foreground text-xl">✕</button>
               </div>
               <div className="space-y-2">
-                {availableSections.map(type => (
-                  <button
-                    key={type}
-                    onClick={() => addSection(type, showAddSection)}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-surface hover:border-blue-400 hover:bg-blue-500/5 transition-all text-left group"
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-background flex items-center justify-center text-xl shrink-0 group-hover:scale-110 transition-transform">
-                      {SECTION_ICONS[type]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-foreground text-sm font-semibold group-hover:text-blue-500 transition-colors">
-                        {SECTION_LABELS[type]}
-                      </p>
-                      <p className="text-foreground/40 text-xs leading-relaxed">
-                        {SECTION_DESCRIPTIONS[type]}
-                      </p>
-                    </div>
-                  </button>
-                ))}
+                {ALL_SECTION_TYPES.map(type => {
+                  const isUsed = sectionOrder.includes(type);
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => !isUsed && addSection(type, showAddSection)}
+                      disabled={isUsed}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left group ${
+                        isUsed
+                          ? 'border-border/50 bg-surface/50 opacity-50 cursor-not-allowed'
+                          : 'border-border bg-surface hover:border-blue-400 hover:bg-blue-500/5'
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-lg bg-background flex items-center justify-center text-xl shrink-0 ${
+                        !isUsed ? 'group-hover:scale-110' : ''
+                      } transition-transform`}>
+                        {SECTION_ICONS[type]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-semibold transition-colors ${
+                          isUsed ? 'text-foreground/40' : 'text-foreground group-hover:text-blue-500'
+                        }`}>
+                          {SECTION_LABELS[type]}
+                        </p>
+                        <p className="text-foreground/40 text-xs leading-relaxed">
+                          {SECTION_DESCRIPTIONS[type]}
+                        </p>
+                      </div>
+                      {isUsed && (
+                        <span className="text-xs text-foreground/30 bg-foreground/5 px-2 py-1 rounded-lg shrink-0">
+                          Přidáno
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

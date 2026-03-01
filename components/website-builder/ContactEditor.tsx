@@ -1,6 +1,6 @@
 'use client';
 
-import type { ContactContent, SectionVariant } from '@/lib/db-website';
+import type { ContactContent, ContactPerson, SectionVariant } from '@/lib/db-website';
 
 interface Props {
   content: ContactContent;
@@ -133,6 +133,89 @@ export function ContactEditor({ content, onChange }: Props) {
               className="flex-1 glass-input rounded-lg px-3 py-2 text-foreground text-sm"
             />
           </div>
+        </div>
+      </div>
+
+      {/* Kontaktní osoby */}
+      <div>
+        <label className="block text-foreground/70 text-sm font-medium mb-2">Kontaktní osoby</label>
+        <div className="space-y-3">
+          {(content.people || []).map((person, idx) => (
+            <div key={idx} className="p-3 rounded-xl bg-surface border border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-foreground/50 text-xs font-medium">Osoba {idx + 1}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = [...(content.people || [])];
+                    next.splice(idx, 1);
+                    onChange({ ...content, people: next });
+                  }}
+                  className="text-red-400 hover:text-red-300 text-xs"
+                >
+                  Odebrat
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={person.name}
+                  onChange={(e) => {
+                    const next = [...(content.people || [])];
+                    next[idx] = { ...next[idx], name: e.target.value };
+                    onChange({ ...content, people: next });
+                  }}
+                  placeholder="Jméno"
+                  className="glass-input rounded-lg px-3 py-2 text-foreground text-sm"
+                />
+                <input
+                  type="text"
+                  value={person.role}
+                  onChange={(e) => {
+                    const next = [...(content.people || [])];
+                    next[idx] = { ...next[idx], role: e.target.value };
+                    onChange({ ...content, people: next });
+                  }}
+                  placeholder="Funkce (např. Trenér)"
+                  className="glass-input rounded-lg px-3 py-2 text-foreground text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="tel"
+                  value={person.phone || ''}
+                  onChange={(e) => {
+                    const next = [...(content.people || [])];
+                    next[idx] = { ...next[idx], phone: e.target.value };
+                    onChange({ ...content, people: next });
+                  }}
+                  placeholder="Telefon (volitelné)"
+                  className="glass-input rounded-lg px-3 py-2 text-foreground text-sm"
+                />
+                <input
+                  type="email"
+                  value={person.email || ''}
+                  onChange={(e) => {
+                    const next = [...(content.people || [])];
+                    next[idx] = { ...next[idx], email: e.target.value };
+                    onChange({ ...content, people: next });
+                  }}
+                  placeholder="Email (volitelné)"
+                  className="glass-input rounded-lg px-3 py-2 text-foreground text-sm"
+                />
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              const next = [...(content.people || []), { name: '', role: '' }];
+              onChange({ ...content, people: next });
+            }}
+            className="w-full py-2.5 rounded-xl border-2 border-dashed border-border text-foreground/40 hover:text-blue-500 hover:border-blue-400 text-sm font-medium transition-colors"
+          >
+            + Přidat osobu
+          </button>
         </div>
       </div>
     </div>

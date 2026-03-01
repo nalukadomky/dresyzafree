@@ -47,6 +47,11 @@ export async function PUT(
       return NextResponse.json({ error: 'Content je povinný' }, { status: 400 });
     }
 
+    // Debug: log what's being saved
+    if (params.sectionType === 'hero') {
+      console.log('[HERO SAVE]', JSON.stringify(body.content).substring(0, 200));
+    }
+
     const section = await dbWebsite.sections.upsert(
       params.id,
       params.sectionType as WebsiteSectionType,

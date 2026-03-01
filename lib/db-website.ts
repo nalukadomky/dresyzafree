@@ -36,6 +36,16 @@ export interface HeroContent {
   showLogo?: boolean;
   textAlign?: 'left' | 'center' | 'right';
   headlineSize?: 'sm' | 'md' | 'lg' | 'xl';
+  logoShape?: 'circle' | 'free';
+  logoZoom?: number;
+  logoOffsetX?: number;
+  logoOffsetY?: number;
+  // Vertical positioning (drag up/down)
+  freePosition?: boolean;
+  logoPositionY?: number;
+  textPositionY?: number;
+  // Element sizes
+  logoSize?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export type SectionVariant = 'light' | 'dark';
@@ -73,6 +83,13 @@ export interface SocialLinks {
   web?: string;
 }
 
+export interface ContactPerson {
+  name: string;
+  role: string;
+  phone?: string;
+  email?: string;
+}
+
 export interface ContactContent {
   title: string;
   address: string;
@@ -80,6 +97,7 @@ export interface ContactContent {
   email: string;
   socialLinks: SocialLinks;
   mapEmbedUrl?: string;
+  people?: ContactPerson[];
   variant?: SectionVariant;
 }
 

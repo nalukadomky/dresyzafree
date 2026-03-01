@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import type { HeroContent } from '@/lib/db-website';
 import { ImageUploader } from './ImageUploader';
+import { PexelsPicker } from './PexelsPicker';
 
 interface Props {
   content: HeroContent;
@@ -64,6 +66,13 @@ const SIZE_OPTIONS = [
   { value: 'xl' as const, label: 'XL' },
 ];
 
+const LOGO_SIZE_OPTIONS = [
+  { value: 'sm' as const, label: 'S' },
+  { value: 'md' as const, label: 'M' },
+  { value: 'lg' as const, label: 'L' },
+  { value: 'xl' as const, label: 'XL' },
+];
+
 const BG_PRESETS = [
   { color: '', label: 'Bez' },
   { color: '#1E3A5F', label: '' },
@@ -76,6 +85,8 @@ const BG_PRESETS = [
 ];
 
 export function HeroEditor({ content, onChange, teamId, teamName }: Props) {
+  const [bgPopup, setBgPopup] = useState<null | 'choose' | 'upload' | 'pexels'>(null);
+
   return (
     <div className="space-y-4">
       <ToggleRow
@@ -84,6 +95,92 @@ export function HeroEditor({ content, onChange, teamId, teamName }: Props) {
         checked={content.showLogo !== false}
         onChange={(v) => onChange({ ...content, showLogo: v })}
       />
+
+      {content.showLogo !== false && (
+        <div>
+          <label className="block text-foreground/70 text-sm font-medium mb-2">Tvar loga</label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onChange({ ...content, logoShape: 'free' })}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
+                (content.logoShape || 'free') === 'free'
+                  ? 'border-blue-500 bg-blue-500/10 text-blue-500'
+                  : 'border-border bg-surface text-foreground/50 hover:border-foreground/20'
+              }`}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+              </svg>
+              Volný
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ ...content, logoShape: 'circle' })}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
+                content.logoShape === 'circle'
+                  ? 'border-blue-500 bg-blue-500/10 text-blue-500'
+                  : 'border-border bg-surface text-foreground/50 hover:border-foreground/20'
+              }`}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+              Kruh
+            </button>
+          </div>
+        </div>
+      )}
+
+      {content.showLogo !== false && content.logoShape === 'circle' && (
+        <div className="space-y-3 p-3 rounded-xl bg-surface border border-border">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-foreground/70 text-sm font-medium">Zoom</label>
+              <span className="text-foreground/40 text-xs">{(content.logoZoom || 1).toFixed(1)}x</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="3"
+              step="0.1"
+              value={content.logoZoom ?? 1}
+              onChange={(e) => onChange({ ...content, logoZoom: parseFloat(e.target.value) })}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-foreground/70 text-sm font-medium">Horizontální posun</label>
+              <span className="text-foreground/40 text-xs">{content.logoOffsetX || 0}%</span>
+            </div>
+            <input
+              type="range"
+              min="-50"
+              max="50"
+              step="1"
+              value={content.logoOffsetX ?? 0}
+              onChange={(e) => onChange({ ...content, logoOffsetX: parseInt(e.target.value) })}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-foreground/70 text-sm font-medium">Vertikální posun</label>
+              <span className="text-foreground/40 text-xs">{content.logoOffsetY || 0}%</span>
+            </div>
+            <input
+              type="range"
+              min="-50"
+              max="50"
+              step="1"
+              value={content.logoOffsetY ?? 0}
+              onChange={(e) => onChange({ ...content, logoOffsetY: parseInt(e.target.value) })}
+              className="w-full"
+            />
+          </div>
+        </div>
+      )}
 
       <div>
         <label className="block text-foreground/70 text-sm font-medium mb-1">Nadpis</label>
@@ -150,6 +247,84 @@ export function HeroEditor({ content, onChange, teamId, teamName }: Props) {
         </div>
       </div>
 
+      {/* Logo size */}
+      {content.showLogo !== false && (
+        <div>
+          <label className="block text-foreground/70 text-sm font-medium mb-2">Velikost loga</label>
+          <div className="flex gap-2">
+            {LOGO_SIZE_OPTIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => onChange({ ...content, logoSize: value })}
+                className={`flex-1 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
+                  (content.logoSize || 'md') === value
+                    ? 'border-blue-500 bg-blue-500/10 text-blue-500'
+                    : 'border-border bg-surface text-foreground/50 hover:border-foreground/20'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Free vertical position */}
+      <ToggleRow
+        label="Volné pozicování"
+        description="Přetáhněte logo a text nahoru/dolů v banneru"
+        checked={content.freePosition === true}
+        onChange={(v) => onChange({
+          ...content,
+          freePosition: v,
+          ...(v && content.logoPositionY == null ? { logoPositionY: 20 } : {}),
+          ...(v && content.textPositionY == null ? { textPositionY: 60 } : {}),
+        })}
+      />
+
+      {content.freePosition && (
+        <div className="space-y-3 p-3 rounded-xl bg-surface border border-border">
+          <p className="text-foreground/50 text-xs">
+            Přetahujte prvky v náhledu nahoru/dolů, nebo upravte posuvníkem.
+          </p>
+
+          {content.showLogo !== false && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-foreground/70 text-sm font-medium">Pozice loga</label>
+                <span className="text-foreground/40 text-xs">{content.logoPositionY ?? 20}%</span>
+              </div>
+              <input type="range" min="5" max="95" step="1" value={content.logoPositionY ?? 20}
+                onChange={(e) => onChange({ ...content, logoPositionY: parseInt(e.target.value) })}
+                className="w-full" />
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-foreground/70 text-sm font-medium">Pozice textu</label>
+              <span className="text-foreground/40 text-xs">{content.textPositionY ?? 60}%</span>
+            </div>
+            <input type="range" min="5" max="95" step="1" value={content.textPositionY ?? 60}
+              onChange={(e) => onChange({ ...content, textPositionY: parseInt(e.target.value) })}
+              className="w-full" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onChange({
+              ...content,
+              logoPositionY: 20,
+              textPositionY: 60,
+            })}
+            className="w-full px-3 py-2 rounded-xl border border-border text-foreground/50 text-xs hover:text-foreground hover:border-foreground/20 transition-colors"
+          >
+            Resetovat pozice na výchozí
+          </button>
+        </div>
+      )}
+
       {/* Background color */}
       <div>
         <label className="block text-foreground/70 text-sm font-medium mb-2">Barva pozadí</label>
@@ -204,15 +379,160 @@ export function HeroEditor({ content, onChange, teamId, teamName }: Props) {
         </div>
       </div>
 
+      {/* Background image */}
       <div>
-        <label className="block text-foreground/70 text-sm font-medium mb-1">Obrázek pozadí</label>
-        <ImageUploader
-          currentUrl={content.backgroundImage}
-          onUpload={(url) => onChange({ ...content, backgroundImage: url })}
-          teamId={teamId}
-          type="hero-bg"
-          label="Nahrát obrázek pozadí"
-        />
+        <label className="block text-foreground/70 text-sm font-medium mb-2">Obrázek pozadí</label>
+
+        {/* Current image preview or add button */}
+        {content.backgroundImage ? (
+          <div className="relative rounded-xl overflow-hidden">
+            <img src={content.backgroundImage} alt="Pozadí" className="w-full h-24 object-cover" />
+            <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/0 hover:bg-black/40 transition-colors group">
+              <button
+                type="button"
+                onClick={() => setBgPopup('choose')}
+                className="px-3 py-1.5 rounded-lg bg-white/90 text-gray-800 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white"
+              >
+                Změnit
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange({ ...content, backgroundImage: undefined })}
+                className="px-3 py-1.5 rounded-lg bg-red-500/90 text-white text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500"
+              >
+                Odebrat
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setBgPopup('choose')}
+            className="w-full flex items-center justify-center gap-2 px-4 py-4 rounded-xl border-2 border-dashed border-border text-foreground/50 text-sm font-medium hover:border-blue-400 hover:text-blue-500 hover:bg-blue-500/5 transition-all"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+            </svg>
+            Nahrát obrázek pozadí
+          </button>
+        )}
+
+        {/* Popup overlay */}
+        {bgPopup && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" onClick={() => setBgPopup(null)}>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <div
+              className="relative bg-background border border-border rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Popup header */}
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <h3 className="text-foreground font-semibold text-sm">
+                  {bgPopup === 'choose' && 'Obrázek pozadí'}
+                  {bgPopup === 'upload' && 'Nahrát z počítače'}
+                  {bgPopup === 'pexels' && 'Fotobanka Pexels'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setBgPopup(null)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-foreground/40 hover:text-foreground hover:bg-surface transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="p-4">
+                {/* Choose source */}
+                {bgPopup === 'choose' && (
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setBgPopup('upload')}
+                      className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border bg-surface hover:border-blue-400 hover:bg-blue-500/5 transition-all group"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 shrink-0">
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                      </div>
+                      <div className="text-left">
+                        <p className="text-foreground text-sm font-medium group-hover:text-blue-500 transition-colors">Nahrát z počítače</p>
+                        <p className="text-foreground/40 text-xs">Vyberte obrázek z vašeho zařízení</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setBgPopup('pexels')}
+                      className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border bg-surface hover:border-blue-400 hover:bg-blue-500/5 transition-all group"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 shrink-0">
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      <div className="text-left">
+                        <p className="text-foreground text-sm font-medium group-hover:text-emerald-500 transition-colors">Hledat ve fotobance Pexels</p>
+                        <p className="text-foreground/40 text-xs">Tisíce bezplatných fotografií</p>
+                      </div>
+                    </button>
+                  </div>
+                )}
+
+                {/* Upload from computer */}
+                {bgPopup === 'upload' && (
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setBgPopup('choose')}
+                      className="flex items-center gap-1 text-foreground/40 text-xs hover:text-foreground transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Zpět
+                    </button>
+                    <ImageUploader
+                      currentUrl={content.backgroundImage}
+                      onUpload={(url) => {
+                        onChange({ ...content, backgroundImage: url });
+                        setBgPopup(null);
+                      }}
+                      teamId={teamId}
+                      type="hero-bg"
+                      label="Nahrát obrázek pozadí"
+                    />
+                  </div>
+                )}
+
+                {/* Pexels search */}
+                {bgPopup === 'pexels' && (
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setBgPopup('choose')}
+                      className="flex items-center gap-1 text-foreground/40 text-xs hover:text-foreground transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Zpět
+                    </button>
+                    <PexelsPicker
+                      onSelect={(url) => {
+                        onChange({ ...content, backgroundImage: url });
+                        setBgPopup(null);
+                      }}
+                      onClose={() => setBgPopup(null)}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       {content.backgroundImage && (
         <div>
