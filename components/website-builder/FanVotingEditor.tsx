@@ -55,7 +55,7 @@ export function FanVotingEditor({ content, onChange }: Props) {
           type="text"
           value={content.title}
           onChange={(e) => onChange({ ...content, title: e.target.value })}
-          placeholder="Hráč zápasu"
+          placeholder="Hráč utkání podle fanoušků"
           className="w-full glass-input rounded-xl px-4 py-2.5 text-foreground"
         />
       </div>

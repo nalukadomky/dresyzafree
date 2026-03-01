@@ -117,7 +117,7 @@ export function FanVotingSection({ content, lastMatch, players, primaryColor, te
           className="text-3xl font-bold mb-8 text-center"
           style={{ color: textPrimary }}
         >
-          {content.title || 'Hráč zápasu'}
+          {content.title || 'Hráč utkání podle fanoušků'}
         </h2>
 
         {/* No match yet */}

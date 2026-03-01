@@ -227,7 +227,7 @@ export const DEFAULT_SECTION_CONTENT: Record<WebsiteSectionType, unknown> = {
     paddingY: 48,
   } as TextBlockContent,
   'fan-voting': {
-    title: 'Hráč zápasu',
+    title: 'Hráč utkání podle fanoušků',
     variant: 'light',
   } as FanVotingContent,
 };

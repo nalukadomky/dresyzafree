@@ -107,7 +107,7 @@ const DEFAULTS: Record<WebsiteSectionType, unknown> = {
   about: DEFAULT_SECTION_CONTENT.about,
   gallery: DEFAULT_SECTION_CONTENT.gallery,
   textblock: DEFAULT_SECTION_CONTENT.textblock,
-  'fan-voting': { title: 'Hráč zápasu', variant: 'light' },
+  'fan-voting': { title: 'Hráč utkání podle fanoušků', variant: 'light' },
 };
 
 // ── Templates ─────────────────────────────────────────────────────────
