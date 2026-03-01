@@ -171,7 +171,8 @@ export default function TeamWebBuilder() {
   const [showAddSection, setShowAddSection] = useState<number | null>(null);
   const [events, setEvents] = useState<EventData[]>([]);
   const [players, setPlayers] = useState<PlayerData[]>([]);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const pendingContentRef = useRef<Map<string, unknown>>(new Map());
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
@@ -256,23 +257,34 @@ export default function TeamWebBuilder() {
   }, [team, apiCall]);
 
   const debouncedSave = useCallback((type: WebsiteSectionType, content: unknown) => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => saveSectionContent(type, content), 1500);
+    const timers = saveTimersRef.current;
+    if (timers.has(type)) clearTimeout(timers.get(type)!);
+    pendingContentRef.current.set(type, content);
+    timers.set(type, setTimeout(() => {
+      timers.delete(type);
+      pendingContentRef.current.delete(type);
+      saveSectionContent(type, content);
+    }, 1500));
   }, [saveSectionContent]);
 
   const saveAllNow = useCallback(async () => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    // Cancel all pending debounced saves
+    saveTimersRef.current.forEach(timer => clearTimeout(timer));
+    saveTimersRef.current.clear();
     setSaving(true);
     for (const type of sectionOrder) {
-      const section = sections.find(s => s.sectionType === type);
-      const content = section?.content || DEFAULTS[type];
-      await apiCall(`/api/teams/${team?.id}/website/sections/${type}`, 'PUT', { content });
+      // Use pending (freshest) content, then fall back to state, then defaults
+      const pending = pendingContentRef.current.get(type);
+      const fromState = sections.find(s => s.sectionType === type)?.content;
+      const content = pending || fromState || DEFAULTS[type];
+      await saveSectionContent(type, content);
     }
+    pendingContentRef.current.clear();
     setSaving(false);
     setHasUnsavedChanges(false);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2000);
-  }, [sectionOrder, sections, team, apiCall]);
+  }, [sectionOrder, sections, saveSectionContent]);
 
   // ── Beforeunload guard ────────────────────────────────────────
 
@@ -737,10 +749,12 @@ export default function TeamWebBuilder() {
                       value={primaryColor}
                       onChange={(e) => {
                         setWebsite(prev => prev ? { ...prev, primaryColor: e.target.value } : prev);
-                        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-                        saveTimerRef.current = setTimeout(() => {
+                        const colorTimer = saveTimersRef.current.get('__color');
+                        if (colorTimer) clearTimeout(colorTimer);
+                        saveTimersRef.current.set('__color', setTimeout(() => {
+                          saveTimersRef.current.delete('__color');
                           saveWebsiteConfig({ primaryColor: e.target.value } as Partial<TeamWebsite>);
-                        }, 500);
+                        }, 500));
                       }}
                       className="w-12 h-10 rounded-lg cursor-pointer border border-border"
                     />
