@@ -5,8 +5,19 @@ import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmProvider } from "@/components/ui/confirm-dialog";
 
 export const metadata: Metadata = {
-  title: "Dresy za free | Správa týmu, docházky a výkonu hráčů",
-  description: "Platforma pro kluby: registrace týmu, události, docházka, hodnocení hráčů, leaderboard a kanadské bodování.",
+  title: "MyPitch | Správa týmu a hodnocení spoluhráčů",
+  description: "MyPitch – platforma pro správu týmu, docházky, hodnocení spoluhráčů a týmový web.",
+  openGraph: {
+    title: "MyPitch | Správa týmu a hodnocení spoluhráčů",
+    description: "MyPitch – platforma pro správu týmu, docházky, hodnocení spoluhráčů a týmový web.",
+    siteName: "MyPitch",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "MyPitch | Správa týmu a hodnocení spoluhráčů",
+    description: "MyPitch – platforma pro správu týmu, docházky, hodnocení spoluhráčů a týmový web.",
+  },
 };
 
 export default function RootLayout({
