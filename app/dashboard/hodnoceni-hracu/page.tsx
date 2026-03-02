@@ -2466,16 +2466,23 @@ function HodnoceniHracuContent() {
                                             className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 rounded-lg bg-surface border border-border mb-2 gap-2"
                                           >
                                             <div className="min-w-0">
-                                              <div className="text-foreground text-sm sm:text-base font-medium">
+                                              <div className="text-foreground text-sm sm:text-base font-medium truncate" title={`${formatEventDateTime(ev.date, ev.startTime)} – ${EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}`}>
                                                 {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}
                                               </div>
                                               {ev.location && (
-                                                <div className="text-foreground/60 text-xs sm:text-sm">
+                                                <a
+                                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ev.location)}`}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="block text-foreground/60 text-xs sm:text-sm truncate hover:text-foreground/80 hover:underline"
+                                                  title={ev.location}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
                                                   📍 {ev.location}
-                                                </div>
+                                                </a>
                                               )}
                                               {ev.opponent && ev.opponent !== ev.location && (
-                                                <div className="text-blue-400 text-sm sm:text-base">
+                                                <div className="text-blue-400 text-sm sm:text-base truncate" title={ev.opponent}>
                                                   ⚽ vs {ev.opponent}
                                                 </div>
                                               )}
@@ -3694,21 +3701,28 @@ function HodnoceniHracuContent() {
                           className="text-left flex-1"
                         >
                           <div className="text-foreground">
-                            <div className="font-medium">
+                            <div className="font-medium truncate" title={`${formatEventDateTime(ev.date, ev.startTime)} – ${EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}`}>
                               {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}
                             </div>
                             {ev.location && (
-                              <div className="text-foreground/60 text-xs sm:text-sm">
+                              <a
+                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ev.location)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block text-foreground/60 text-xs sm:text-sm truncate hover:text-foreground/80 hover:underline"
+                                title={ev.location}
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 📍 {ev.location}
-                              </div>
+                              </a>
                             )}
                             {ev.opponent && ev.opponent !== ev.location && (
-                              <div className="text-blue-400 text-sm">
+                              <div className="text-blue-400 text-sm truncate" title={ev.opponent}>
                                 ⚽ vs {ev.opponent}
                               </div>
                             )}
                             {ev.note && (
-                              <div className="text-foreground/70 text-xs mt-0.5">{ev.note}</div>
+                              <div className="text-foreground/70 text-xs mt-0.5 truncate" title={ev.note}>{ev.note}</div>
                             )}
                           </div>
                         </button>
