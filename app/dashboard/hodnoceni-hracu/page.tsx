@@ -256,6 +256,19 @@ interface IcsImportCandidate {
   selected: boolean;
 }
 
+interface PsmfImportCandidate {
+  uid: string;
+  date: string;
+  startTime: string;
+  opponent: string;
+  venueName: string;
+  venueAbbrev: string;
+  round: string;
+  isHome: boolean;
+  summary: string;
+  selected: boolean;
+}
+
 interface LeaderboardEntry {
   playerId: string;
   playerName: string;
@@ -991,6 +1004,15 @@ function HodnoceniHracuContent() {
   const [recentlyImportedMatchIds, setRecentlyImportedMatchIds] = useState<string[]>([]);
   const importAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deletingMatches, setDeletingMatches] = useState(false);
+
+  // PSMF import state
+  const [psmfUrl, setPsmfUrl] = useState('');
+  const [psmfCandidates, setPsmfCandidates] = useState<PsmfImportCandidate[]>([]);
+  const [psmfPanelOpen, setPsmfPanelOpen] = useState(false);
+  const [psmfPreviewOpen, setPsmfPreviewOpen] = useState(false);
+  const [psmfFeedback, setPsmfFeedback] = useState<string | null>(null);
+  const [psmfParsing, setPsmfParsing] = useState(false);
+  const [psmfImporting, setPsmfImporting] = useState(false);
 
   const [events, setEvents] = useState<Event[]>([]);
   const [ucastModal, setUcastModal] = useState<Event | null>(null);
@@ -1816,6 +1838,127 @@ function HodnoceniHracuContent() {
     }
   };
 
+
+  // --- PSMF import handlers ---
+  const isValidPsmfUrl = (url: string): boolean =>
+    /^https?:\/\/(www\.)?psmf\.cz\/souteze\/[^/]+\/[^/]+\/tymy\/[^/]+\/?$/.test(url.trim());
+
+  const handlePsmfFetch = async () => {
+    const url = psmfUrl.trim();
+    if (!url) {
+      setPsmfFeedback('error:Vložte URL stránky týmu z psmf.cz.');
+      return;
+    }
+    if (!isValidPsmfUrl(url)) {
+      setPsmfFeedback('error:Neplatná URL. Očekávaný formát: https://www.psmf.cz/souteze/.../tymy/nazev-tymu/');
+      return;
+    }
+    setPsmfParsing(true);
+    setPsmfFeedback(null);
+    try {
+      const res = await fetch('/api/psmf-scrape', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPsmfFeedback(`error:${data.error || 'Nepodařilo se načíst rozpis.'}`);
+        return;
+      }
+      const candidates: PsmfImportCandidate[] = ((data.matches || []) as Omit<PsmfImportCandidate, 'selected'>[]).map((m) => ({
+        ...m,
+        selected: true,
+      }));
+      setPsmfCandidates(candidates);
+      setPsmfPreviewOpen(candidates.length > 0);
+      setPsmfPanelOpen(true);
+      setPsmfFeedback(`success:Načteno ${candidates.length} zápasů z psmf.cz.`);
+    } catch {
+      setPsmfFeedback('error:Chyba při komunikaci se serverem.');
+    } finally {
+      setPsmfParsing(false);
+    }
+  };
+
+  const togglePsmfCandidate = (uid: string) => {
+    setPsmfCandidates((prev) => prev.map((item) => (item.uid === uid ? { ...item, selected: !item.selected } : item)));
+  };
+
+  const setAllPsmfCandidates = (selected: boolean) => {
+    setPsmfCandidates((prev) => prev.map((item) => ({ ...item, selected })));
+  };
+
+  const resetPsmfImportSession = ({ keepFeedback = false }: { keepFeedback?: boolean } = {}) => {
+    setPsmfCandidates([]);
+    setPsmfPreviewOpen(false);
+    if (!keepFeedback) setPsmfFeedback(null);
+  };
+
+  const importSelectedPsmfMatches = async () => {
+    if (!teamId || !token) return;
+    const selected = psmfCandidates.filter((item) => item.selected);
+    if (selected.length === 0) {
+      setPsmfFeedback('error:Vyberte alespoň jeden zápas k importu.');
+      return;
+    }
+    setPsmfImporting(true);
+    setPsmfFeedback(null);
+    try {
+      const existing = new Set(
+        matches.map((m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`)
+      );
+      let created = 0;
+      let skipped = 0;
+      let failed = 0;
+      const createdKeys: string[] = [];
+
+      for (const candidate of selected) {
+        const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.trim().toLowerCase()}`;
+        if (existing.has(key)) {
+          skipped += 1;
+          continue;
+        }
+        const venueInfo = candidate.venueName || candidate.venueAbbrev || undefined;
+        const res = await fetch(`/api/teams/${teamId}/matches`, {
+          method: 'POST',
+          headers: headers(),
+          body: JSON.stringify({
+            date: candidate.date,
+            startTime: candidate.startTime,
+            opponent: candidate.opponent || undefined,
+            name: venueInfo,
+          }),
+        });
+        if (res.ok) {
+          created += 1;
+          existing.add(key);
+          createdKeys.push(key);
+        } else {
+          failed += 1;
+        }
+      }
+
+      const latestMatches = await fetchMatches();
+      if (importAnimationTimeoutRef.current) {
+        clearTimeout(importAnimationTimeoutRef.current);
+      }
+      const importedIds = latestMatches
+        .filter((m) => createdKeys.includes(`${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`))
+        .map((m) => m.id);
+      setRecentlyImportedMatchIds(importedIds);
+      if (importedIds.length > 0) {
+        importAnimationTimeoutRef.current = setTimeout(() => {
+          setRecentlyImportedMatchIds([]);
+        }, 2200);
+      }
+      resetPsmfImportSession({ keepFeedback: true });
+      setPsmfPanelOpen(false);
+      setPsmfFeedback(`success:Import hotov. Přidáno: ${created}, přeskočeno (duplicitní): ${skipped}, chyby: ${failed}.`);
+    } finally {
+      setPsmfImporting(false);
+    }
+  };
 
   const deleteMatch = async (matchId: string) => {
     const ok = await confirm({ message: 'Opravdu smazat zápas?', variant: 'danger' });
@@ -2708,6 +2851,151 @@ function HodnoceniHracuContent() {
                               setIcsPanelOpen(false);
                             }}
                             disabled={icsImporting}
+                            className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium"
+                          >
+                            Zrušit
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {/* Import z psmf.cz (Hanspaulská liga) */}
+              <div className="mb-4 rounded-xl border border-border bg-surface/50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-foreground">Import z psmf.cz (Hanspaulská liga)</h3>
+                    <span className="text-xs text-foreground/60">Vložte URL stránky svého týmu z psmf.cz</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!psmfPanelOpen && psmfCandidates.length > 0 && (
+                      <span className="text-[11px] px-2 py-1 rounded-full border border-blue-400/40 text-blue-300 bg-blue-500/10">
+                        Nalezeno {psmfCandidates.length}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setPsmfPanelOpen((prev) => !prev)}
+                      aria-expanded={psmfPanelOpen}
+                      aria-controls="psmf-import-panel"
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                    >
+                      Načíst z psmf.cz
+                      <span className="text-xs">{psmfPanelOpen ? '▲' : '▼'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {!psmfPanelOpen && psmfFeedback && (
+                  <p className={`mt-2 text-xs ${psmfFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
+                    {psmfFeedback.replace(/^(success|error):/, '')}
+                  </p>
+                )}
+
+                <div
+                  id="psmf-import-panel"
+                  className={`overflow-hidden transition-all duration-300 ease-out ${
+                    psmfPanelOpen ? 'max-h-[920px] opacity-100 mt-3 translate-y-0' : 'max-h-0 opacity-0 -translate-y-1 pointer-events-none'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    <p className="text-xs text-foreground/70">
+                      Otevřete{' '}
+                      <a href="https://www.psmf.cz" target="_blank" rel="noopener noreferrer" className="underline">
+                        psmf.cz
+                      </a>
+                      , najděte stránku svého týmu v Hanspaulské lize a zkopírujte URL
+                      (např.&nbsp;https://www.psmf.cz/souteze/.../tymy/nazev-tymu/).
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="url"
+                        value={psmfUrl}
+                        onChange={(e) => setPsmfUrl(e.target.value)}
+                        placeholder="https://www.psmf.cz/souteze/.../tymy/nazev-tymu/"
+                        className="flex-1 min-w-0 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-sm"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handlePsmfFetch();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handlePsmfFetch}
+                        disabled={psmfParsing}
+                        className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm hover:bg-surface disabled:opacity-50"
+                      >
+                        {psmfParsing ? 'Načítám...' : 'Načíst rozpis'}
+                      </button>
+                    </div>
+
+                    {psmfFeedback && (
+                      <p className={`text-xs ${psmfFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
+                        {psmfFeedback.replace(/^(success|error):/, '')}
+                      </p>
+                    )}
+
+                    {psmfPreviewOpen && psmfCandidates.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs text-foreground/70">
+                            Nalezeno {psmfCandidates.length} zápasů, k importu vybráno{' '}
+                            {psmfCandidates.filter((x) => x.selected).length}.
+                          </p>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => setAllPsmfCandidates(true)} className="text-xs text-foreground/70 hover:text-foreground">
+                              Vybrat vše
+                            </button>
+                            <button type="button" onClick={() => setAllPsmfCandidates(false)} className="text-xs text-foreground/70 hover:text-foreground">
+                              Zrušit výběr
+                            </button>
+                          </div>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
+                          {psmfCandidates.map((item) => (
+                            <label key={item.uid} className="flex items-start gap-2 px-3 py-2 border-b border-border/60 last:border-b-0 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={item.selected}
+                                onChange={() => togglePsmfCandidate(item.uid)}
+                                className="mt-0.5"
+                              />
+                              <span className="text-foreground/85">
+                                <span className="font-medium">{formatEventDateTime(item.date, item.startTime)}</span>
+                                <span className="text-foreground/60"> vs {item.opponent || 'Soupeř'}</span>
+                                {item.isHome && (
+                                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300">doma</span>
+                                )}
+                                {!item.isHome && (
+                                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-300">venku</span>
+                                )}
+                                <span className="block text-xs text-foreground/50 truncate">
+                                  {item.venueAbbrev}
+                                  {item.venueName ? ` – ${item.venueName}` : ''} | Kolo {item.round}
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={importSelectedPsmfMatches}
+                            disabled={psmfImporting}
+                            className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium"
+                          >
+                            {psmfImporting ? 'Importuji...' : 'Importovat vybrané zápasy'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetPsmfImportSession({ keepFeedback: true });
+                              setPsmfPanelOpen(false);
+                            }}
+                            disabled={psmfImporting}
                             className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium"
                           >
                             Zrušit
