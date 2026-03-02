@@ -1006,11 +1006,14 @@ function HodnoceniHracuContent() {
   const [deletingMatches, setDeletingMatches] = useState(false);
 
   // PSMF import state
-  const [psmfUrl, setPsmfUrl] = useState('');
+  const [psmfClubName, setPsmfClubName] = useState('');
+  const [psmfSearchResults, setPsmfSearchResults] = useState<{ name: string; slug: string; division: string; url: string }[]>([]);
+  const [psmfSelectedTeam, setPsmfSelectedTeam] = useState<{ name: string; url: string } | null>(null);
   const [psmfCandidates, setPsmfCandidates] = useState<PsmfImportCandidate[]>([]);
   const [psmfPanelOpen, setPsmfPanelOpen] = useState(false);
   const [psmfPreviewOpen, setPsmfPreviewOpen] = useState(false);
   const [psmfFeedback, setPsmfFeedback] = useState<string | null>(null);
+  const [psmfSearching, setPsmfSearching] = useState(false);
   const [psmfParsing, setPsmfParsing] = useState(false);
   const [psmfImporting, setPsmfImporting] = useState(false);
 
@@ -1840,26 +1843,61 @@ function HodnoceniHracuContent() {
 
 
   // --- PSMF import handlers ---
-  const isValidPsmfUrl = (url: string): boolean =>
-    /^https?:\/\/(www\.)?psmf\.cz\/souteze\/[^/]+\/[^/]+\/tymy\/[^/]+\/?$/.test(url.trim());
 
-  const handlePsmfFetch = async () => {
-    const url = psmfUrl.trim();
-    if (!url) {
-      setPsmfFeedback('error:Vložte URL stránky týmu z psmf.cz.');
+  /** Search for teams by club name */
+  const handlePsmfSearch = async () => {
+    const name = psmfClubName.trim();
+    if (name.length < 2) {
+      setPsmfFeedback('error:Zadejte alespoň 2 znaky názvu klubu.');
       return;
     }
-    if (!isValidPsmfUrl(url)) {
-      setPsmfFeedback('error:Neplatná URL. Očekávaný formát: https://www.psmf.cz/souteze/.../tymy/nazev-tymu/');
-      return;
+    setPsmfSearching(true);
+    setPsmfFeedback(null);
+    setPsmfSearchResults([]);
+    setPsmfSelectedTeam(null);
+    setPsmfCandidates([]);
+    setPsmfPreviewOpen(false);
+    try {
+      const res = await fetch('/api/psmf-search', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPsmfFeedback(`error:${data.error || 'Nepodařilo se vyhledat týmy.'}`);
+        return;
+      }
+      const teams = data.teams || [];
+      if (teams.length === 0) {
+        setPsmfFeedback('error:Žádný tým nebyl nalezen. Zkuste jiný název.');
+        return;
+      }
+      setPsmfSearchResults(teams);
+      if (teams.length === 1) {
+        // Auto-select if exactly one result
+        handlePsmfSelectTeam(teams[0]);
+      } else {
+        setPsmfFeedback(`success:Nalezeno ${data.total} týmů. Vyberte svůj tým.`);
+      }
+    } catch {
+      setPsmfFeedback('error:Chyba při komunikaci se serverem.');
+    } finally {
+      setPsmfSearching(false);
     }
+  };
+
+  /** Select a team and load its match schedule */
+  const handlePsmfSelectTeam = async (team: { name: string; slug: string; division: string; url: string }) => {
+    setPsmfSelectedTeam({ name: team.name, url: team.url });
+    setPsmfSearchResults([]);
     setPsmfParsing(true);
     setPsmfFeedback(null);
     try {
       const res = await fetch('/api/psmf-scrape', {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url: team.url }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1872,8 +1910,7 @@ function HodnoceniHracuContent() {
       }));
       setPsmfCandidates(candidates);
       setPsmfPreviewOpen(candidates.length > 0);
-      setPsmfPanelOpen(true);
-      setPsmfFeedback(`success:Načteno ${candidates.length} zápasů z psmf.cz.`);
+      setPsmfFeedback(`success:${team.name} — načteno ${candidates.length} zápasů.`);
     } catch {
       setPsmfFeedback('error:Chyba při komunikaci se serverem.');
     } finally {
@@ -2866,7 +2903,7 @@ function HodnoceniHracuContent() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-foreground">Import z psmf.cz (Hanspaulská liga)</h3>
-                    <span className="text-xs text-foreground/60">Vložte URL stránky svého týmu z psmf.cz</span>
+                    <span className="text-xs text-foreground/60">Zadejte název svého klubu a načtěte rozpis</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {!psmfPanelOpen && psmfCandidates.length > 0 && (
@@ -2896,41 +2933,88 @@ function HodnoceniHracuContent() {
                 <div
                   id="psmf-import-panel"
                   className={`overflow-hidden transition-all duration-300 ease-out ${
-                    psmfPanelOpen ? 'max-h-[920px] opacity-100 mt-3 translate-y-0' : 'max-h-0 opacity-0 -translate-y-1 pointer-events-none'
+                    psmfPanelOpen ? 'max-h-[1200px] opacity-100 mt-3 translate-y-0' : 'max-h-0 opacity-0 -translate-y-1 pointer-events-none'
                   }`}
                 >
                   <div className="space-y-3">
-                    <p className="text-xs text-foreground/70">
-                      Otevřete{' '}
-                      <a href="https://www.psmf.cz" target="_blank" rel="noopener noreferrer" className="underline">
-                        psmf.cz
-                      </a>
-                      , najděte stránku svého týmu v Hanspaulské lize a zkopírujte URL
-                      (např.&nbsp;https://www.psmf.cz/souteze/.../tymy/nazev-tymu/).
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <input
-                        type="url"
-                        value={psmfUrl}
-                        onChange={(e) => setPsmfUrl(e.target.value)}
-                        placeholder="https://www.psmf.cz/souteze/.../tymy/nazev-tymu/"
-                        className="flex-1 min-w-0 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-sm"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handlePsmfFetch();
-                          }
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={handlePsmfFetch}
-                        disabled={psmfParsing}
-                        className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm hover:bg-surface disabled:opacity-50"
-                      >
-                        {psmfParsing ? 'Načítám...' : 'Načíst rozpis'}
-                      </button>
-                    </div>
+                    {/* Step 1: Club name search */}
+                    {!psmfSelectedTeam && (
+                      <>
+                        <p className="text-xs text-foreground/70">
+                          Zadejte název svého klubu v Hanspaulské lize (např. &quot;Huňáč&quot;, &quot;Dynamo&quot;, &quot;Sokol&quot;).
+                          {psmfSearching && ' První hledání může trvat déle (načítá se databáze týmů).'}
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            value={psmfClubName}
+                            onChange={(e) => setPsmfClubName(e.target.value)}
+                            placeholder="Název klubu..."
+                            className="flex-1 min-w-0 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-sm"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handlePsmfSearch();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={handlePsmfSearch}
+                            disabled={psmfSearching}
+                            className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm hover:bg-surface disabled:opacity-50"
+                          >
+                            {psmfSearching ? 'Hledám...' : 'Hledat tým'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Search results — pick team */}
+                    {psmfSearchResults.length > 1 && !psmfSelectedTeam && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-foreground/70">Vyberte svůj tým:</p>
+                        <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
+                          {psmfSearchResults.map((t) => (
+                            <button
+                              key={t.slug}
+                              type="button"
+                              onClick={() => handlePsmfSelectTeam(t)}
+                              className="w-full flex items-center justify-between px-3 py-2 border-b border-border/60 last:border-b-0 text-sm text-left hover:bg-surface-hover transition-colors"
+                            >
+                              <span className="font-medium text-foreground">{t.name}</span>
+                              <span className="text-[11px] text-foreground/50 ml-2 shrink-0">{t.division}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Selected team indicator */}
+                    {psmfSelectedTeam && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-foreground/70">Tým:</span>
+                        <span className="font-medium text-foreground">{psmfSelectedTeam.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPsmfSelectedTeam(null);
+                            setPsmfCandidates([]);
+                            setPsmfPreviewOpen(false);
+                            setPsmfFeedback(null);
+                            setPsmfSearchResults([]);
+                          }}
+                          className="text-xs text-foreground/50 hover:text-foreground underline ml-1"
+                        >
+                          změnit
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Loading spinner */}
+                    {psmfParsing && (
+                      <p className="text-xs text-foreground/60">Načítám rozpis zápasů...</p>
+                    )}
 
                     {psmfFeedback && (
                       <p className={`text-xs ${psmfFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
@@ -2938,6 +3022,7 @@ function HodnoceniHracuContent() {
                       </p>
                     )}
 
+                    {/* Step 2: Match candidates */}
                     {psmfPreviewOpen && psmfCandidates.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
