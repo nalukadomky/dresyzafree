@@ -1942,17 +1942,21 @@ function HodnoceniHracuContent() {
     setPsmfImporting(true);
     setPsmfFeedback(null);
     try {
-      const existing = new Set(
+      const existingMatches = new Set(
         matches.map((m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`)
       );
+      const existingEvents = new Set(
+        events.map((e) => `${e.date}|${(e.startTime || '').trim()}|${(e.opponent || '').trim().toLowerCase()}`)
+      );
       let created = 0;
+      let eventsCreated = 0;
       let skipped = 0;
       let failed = 0;
       const createdKeys: string[] = [];
 
       for (const candidate of selected) {
         const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.trim().toLowerCase()}`;
-        if (existing.has(key)) {
+        if (existingMatches.has(key)) {
           skipped += 1;
           continue;
         }
@@ -1969,14 +1973,35 @@ function HodnoceniHracuContent() {
         });
         if (res.ok) {
           created += 1;
-          existing.add(key);
+          existingMatches.add(key);
           createdKeys.push(key);
+
+          // Automaticky vytvořit i událost v kalendáři (pokud ještě neexistuje)
+          if (!existingEvents.has(key)) {
+            const evRes = await fetch(`/api/teams/${teamId}/events`, {
+              method: 'POST',
+              headers: headers(),
+              body: JSON.stringify({
+                date: candidate.date,
+                startTime: candidate.startTime,
+                eventType: 'competitive_match',
+                location: venueInfo || 'psmf.cz',
+                opponent: candidate.opponent || undefined,
+                note: `Kolo ${candidate.round} – Hanspaulská liga`,
+              }),
+            });
+            if (evRes.ok) {
+              eventsCreated += 1;
+              existingEvents.add(key);
+            }
+          }
         } else {
           failed += 1;
         }
       }
 
       const latestMatches = await fetchMatches();
+      await fetchEvents();
       if (importAnimationTimeoutRef.current) {
         clearTimeout(importAnimationTimeoutRef.current);
       }
@@ -1991,7 +2016,7 @@ function HodnoceniHracuContent() {
       }
       resetPsmfImportSession({ keepFeedback: true });
       setPsmfPanelOpen(false);
-      setPsmfFeedback(`success:Import hotov. Přidáno: ${created}, přeskočeno (duplicitní): ${skipped}, chyby: ${failed}.`);
+      setPsmfFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, přeskočeno: ${skipped}, chyby: ${failed}.`);
     } finally {
       setPsmfImporting(false);
     }
