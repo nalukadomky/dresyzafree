@@ -269,6 +269,17 @@ interface PsmfImportCandidate {
   selected: boolean;
 }
 
+interface StrahovskaImportCandidate {
+  uid: string;
+  date: string;
+  startTime: string;
+  opponent: string;
+  fieldNumber: string;
+  isHome: boolean;
+  summary: string;
+  selected: boolean;
+}
+
 interface LeaderboardEntry {
   playerId: string;
   playerName: string;
@@ -1016,6 +1027,18 @@ function HodnoceniHracuContent() {
   const [psmfSearching, setPsmfSearching] = useState(false);
   const [psmfParsing, setPsmfParsing] = useState(false);
   const [psmfImporting, setPsmfImporting] = useState(false);
+
+  // Strahovska liga import state
+  const [strahovskaClubName, setStrahovskaClubName] = useState('');
+  const [strahovskaSearchResults, setStrahovskaSearchResults] = useState<{ name: string; tid: string; division: string; url: string }[]>([]);
+  const [strahovskaSelectedTeam, setStrahovskaSelectedTeam] = useState<{ name: string; tid: string } | null>(null);
+  const [strahovskaCandidates, setStrahovskaCandidates] = useState<StrahovskaImportCandidate[]>([]);
+  const [strahovskaPanelOpen, setStrahovskaPanelOpen] = useState(false);
+  const [strahovskaPreviewOpen, setStrahovskaPreviewOpen] = useState(false);
+  const [strahovskaFeedback, setStrahovskaFeedback] = useState<string | null>(null);
+  const [strahovskaSearching, setStrahovskaSearching] = useState(false);
+  const [strahovskaParsing, setStrahovskaParsing] = useState(false);
+  const [strahovskaImporting, setStrahovskaImporting] = useState(false);
 
   const [events, setEvents] = useState<Event[]>([]);
   const [ucastModal, setUcastModal] = useState<Event | null>(null);
@@ -2020,6 +2043,184 @@ function HodnoceniHracuContent() {
       setPsmfFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, přeskočeno: ${skipped}, chyby: ${failed}.`);
     } finally {
       setPsmfImporting(false);
+    }
+  };
+
+  // --- Strahovska liga import handlers ---
+
+  const handleStrahovskaSearch = async () => {
+    const name = strahovskaClubName.trim();
+    if (name.length < 2) {
+      setStrahovskaFeedback('error:Zadejte alespoň 2 znaky názvu klubu.');
+      return;
+    }
+    setStrahovskaSearching(true);
+    setStrahovskaFeedback(null);
+    setStrahovskaSearchResults([]);
+    setStrahovskaSelectedTeam(null);
+    setStrahovskaCandidates([]);
+    setStrahovskaPreviewOpen(false);
+    try {
+      const res = await fetch('/api/strahovska-search', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStrahovskaFeedback(`error:${data.error || 'Nepodařilo se vyhledat týmy.'}`);
+        return;
+      }
+      const teams = data.teams || [];
+      if (teams.length === 0) {
+        setStrahovskaFeedback('error:Žádný tým nebyl nalezen. Zkuste jiný název.');
+        return;
+      }
+      setStrahovskaSearchResults(teams);
+      if (teams.length === 1) {
+        handleStrahovskaSelectTeam(teams[0]);
+      } else {
+        setStrahovskaFeedback(`success:Nalezeno ${data.total} týmů. Vyberte svůj tým.`);
+      }
+    } catch {
+      setStrahovskaFeedback('error:Chyba při komunikaci se serverem.');
+    } finally {
+      setStrahovskaSearching(false);
+    }
+  };
+
+  const handleStrahovskaSelectTeam = async (team: { name: string; tid: string; division: string; url: string }) => {
+    setStrahovskaSelectedTeam({ name: team.name, tid: team.tid });
+    setStrahovskaSearchResults([]);
+    setStrahovskaParsing(true);
+    setStrahovskaFeedback(null);
+    try {
+      const res = await fetch('/api/strahovska-scrape', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ tid: team.tid, teamName: team.name }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStrahovskaFeedback(`error:${data.error || 'Nepodařilo se načíst rozpis.'}`);
+        return;
+      }
+      const candidates: StrahovskaImportCandidate[] = ((data.matches || []) as Omit<StrahovskaImportCandidate, 'selected'>[]).map((m) => ({
+        ...m,
+        selected: true,
+      }));
+      setStrahovskaCandidates(candidates);
+      setStrahovskaPreviewOpen(candidates.length > 0);
+      setStrahovskaFeedback(`success:${team.name} — načteno ${candidates.length} zápasů.`);
+    } catch {
+      setStrahovskaFeedback('error:Chyba při komunikaci se serverem.');
+    } finally {
+      setStrahovskaParsing(false);
+    }
+  };
+
+  const toggleStrahovskaCandidate = (uid: string) => {
+    setStrahovskaCandidates((prev) => prev.map((item) => (item.uid === uid ? { ...item, selected: !item.selected } : item)));
+  };
+
+  const setAllStrahovskaCandidates = (selected: boolean) => {
+    setStrahovskaCandidates((prev) => prev.map((item) => ({ ...item, selected })));
+  };
+
+  const resetStrahovskaImportSession = ({ keepFeedback = false }: { keepFeedback?: boolean } = {}) => {
+    setStrahovskaCandidates([]);
+    setStrahovskaPreviewOpen(false);
+    if (!keepFeedback) setStrahovskaFeedback(null);
+  };
+
+  const importSelectedStrahovskaMatches = async () => {
+    if (!teamId || !token) return;
+    const selected = strahovskaCandidates.filter((item) => item.selected);
+    if (selected.length === 0) {
+      setStrahovskaFeedback('error:Vyberte alespoň jeden zápas k importu.');
+      return;
+    }
+    setStrahovskaImporting(true);
+    setStrahovskaFeedback(null);
+    try {
+      const existingMatchSet = new Set(
+        matches.map((m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`)
+      );
+      const existingEventSet = new Set(
+        events.map((e) => `${e.date}|${(e.startTime || '').trim()}|${(e.opponent || '').trim().toLowerCase()}`)
+      );
+      let created = 0;
+      let eventsCreated = 0;
+      let skipped = 0;
+      let failed = 0;
+      const createdKeys: string[] = [];
+
+      for (const candidate of selected) {
+        const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.trim().toLowerCase()}`;
+        if (existingMatchSet.has(key)) {
+          skipped += 1;
+          continue;
+        }
+        const location = candidate.fieldNumber
+          ? `Strahov, hřiště č. ${candidate.fieldNumber}, Praha 6`
+          : 'Strahov, Praha 6';
+        const res = await fetch(`/api/teams/${teamId}/matches`, {
+          method: 'POST',
+          headers: headers(),
+          body: JSON.stringify({
+            date: candidate.date,
+            startTime: candidate.startTime,
+            opponent: candidate.opponent || undefined,
+            name: location,
+          }),
+        });
+        if (res.ok) {
+          created += 1;
+          existingMatchSet.add(key);
+          createdKeys.push(key);
+
+          if (!existingEventSet.has(key)) {
+            const evRes = await fetch(`/api/teams/${teamId}/events`, {
+              method: 'POST',
+              headers: headers(),
+              body: JSON.stringify({
+                date: candidate.date,
+                startTime: candidate.startTime,
+                eventType: 'competitive_match',
+                location,
+                opponent: candidate.opponent || undefined,
+                note: 'Strahovská liga',
+              }),
+            });
+            if (evRes.ok) {
+              eventsCreated += 1;
+              existingEventSet.add(key);
+            }
+          }
+        } else {
+          failed += 1;
+        }
+      }
+
+      const latestMatches = await fetchMatches();
+      await fetchEvents();
+      if (importAnimationTimeoutRef.current) {
+        clearTimeout(importAnimationTimeoutRef.current);
+      }
+      const importedIds = latestMatches
+        .filter((m) => createdKeys.includes(`${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`))
+        .map((m) => m.id);
+      setRecentlyImportedMatchIds(importedIds);
+      if (importedIds.length > 0) {
+        importAnimationTimeoutRef.current = setTimeout(() => {
+          setRecentlyImportedMatchIds([]);
+        }, 2200);
+      }
+      resetStrahovskaImportSession({ keepFeedback: true });
+      setStrahovskaPanelOpen(false);
+      setStrahovskaFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, přeskočeno: ${skipped}, chyby: ${failed}.`);
+    } finally {
+      setStrahovskaImporting(false);
     }
   };
 
@@ -3124,6 +3325,198 @@ function HodnoceniHracuContent() {
                               setPsmfPanelOpen(false);
                             }}
                             disabled={psmfImporting}
+                            className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium"
+                          >
+                            Zrušit
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {/* Import ze strahovskaliga.cz (Strahovská liga) */}
+              <div className="mb-4 rounded-xl border border-border bg-surface/50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-foreground">Import ze strahovskaliga.cz (Strahovská liga)</h3>
+                    <span className="text-xs text-foreground/60">Zadejte název svého klubu a načtěte rozpis</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!strahovskaPanelOpen && strahovskaCandidates.length > 0 && (
+                      <span className="text-[11px] px-2 py-1 rounded-full border border-emerald-400/40 text-emerald-300 bg-emerald-500/10">
+                        Nalezeno {strahovskaCandidates.length}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setStrahovskaPanelOpen((prev) => !prev)}
+                      aria-expanded={strahovskaPanelOpen}
+                      aria-controls="strahovska-import-panel"
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors"
+                    >
+                      Načíst ze strahovskaliga.cz
+                      <span className="text-xs">{strahovskaPanelOpen ? '▲' : '▼'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {!strahovskaPanelOpen && strahovskaFeedback && (
+                  <p className={`mt-2 text-xs ${strahovskaFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
+                    {strahovskaFeedback.replace(/^(success|error):/, '')}
+                  </p>
+                )}
+
+                <div
+                  id="strahovska-import-panel"
+                  className={`overflow-hidden transition-all duration-300 ease-out ${
+                    strahovskaPanelOpen ? 'max-h-[1200px] opacity-100 mt-3 translate-y-0' : 'max-h-0 opacity-0 -translate-y-1 pointer-events-none'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    {/* Step 1: Club name search */}
+                    {!strahovskaSelectedTeam && (
+                      <>
+                        <p className="text-xs text-foreground/70">
+                          Zadejte název svého klubu ve Strahovské lize (např. &quot;Strojárna&quot;, &quot;Gargamel&quot;).
+                          {strahovskaSearching && ' První hledání může trvat déle (načítá se databáze týmů).'}
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            value={strahovskaClubName}
+                            onChange={(e) => setStrahovskaClubName(e.target.value)}
+                            placeholder="Název klubu..."
+                            className="flex-1 min-w-0 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-sm"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleStrahovskaSearch();
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleStrahovskaSearch}
+                            disabled={strahovskaSearching}
+                            className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm hover:bg-surface disabled:opacity-50"
+                          >
+                            {strahovskaSearching ? 'Hledám...' : 'Hledat tým'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Search results — pick team */}
+                    {strahovskaSearchResults.length > 1 && !strahovskaSelectedTeam && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-foreground/70">Vyberte svůj tým:</p>
+                        <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
+                          {strahovskaSearchResults.map((t) => (
+                            <button
+                              key={t.tid}
+                              type="button"
+                              onClick={() => handleStrahovskaSelectTeam(t)}
+                              className="w-full flex items-center justify-between px-3 py-2 border-b border-border/60 last:border-b-0 text-sm text-left hover:bg-surface-hover transition-colors"
+                            >
+                              <span className="font-medium text-foreground">{t.name}</span>
+                              <span className="text-[11px] text-foreground/50 ml-2 shrink-0">{t.division}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Selected team indicator */}
+                    {strahovskaSelectedTeam && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-foreground/70">Tým:</span>
+                        <span className="font-medium text-foreground">{strahovskaSelectedTeam.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStrahovskaSelectedTeam(null);
+                            setStrahovskaCandidates([]);
+                            setStrahovskaPreviewOpen(false);
+                            setStrahovskaFeedback(null);
+                            setStrahovskaSearchResults([]);
+                          }}
+                          className="text-xs text-foreground/50 hover:text-foreground underline ml-1"
+                        >
+                          změnit
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Loading spinner */}
+                    {strahovskaParsing && (
+                      <p className="text-xs text-foreground/60">Načítám rozpis zápasů...</p>
+                    )}
+
+                    {strahovskaFeedback && (
+                      <p className={`text-xs ${strahovskaFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
+                        {strahovskaFeedback.replace(/^(success|error):/, '')}
+                      </p>
+                    )}
+
+                    {/* Step 2: Match candidates */}
+                    {strahovskaPreviewOpen && strahovskaCandidates.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs text-foreground/70">
+                            Nalezeno {strahovskaCandidates.length} zápasů, k importu vybráno{' '}
+                            {strahovskaCandidates.filter((x) => x.selected).length}.
+                          </p>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => setAllStrahovskaCandidates(true)} className="text-xs text-foreground/70 hover:text-foreground">
+                              Vybrat vše
+                            </button>
+                            <button type="button" onClick={() => setAllStrahovskaCandidates(false)} className="text-xs text-foreground/70 hover:text-foreground">
+                              Zrušit výběr
+                            </button>
+                          </div>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
+                          {strahovskaCandidates.map((item) => (
+                            <label key={item.uid} className="flex items-start gap-2 px-3 py-2 border-b border-border/60 last:border-b-0 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={item.selected}
+                                onChange={() => toggleStrahovskaCandidate(item.uid)}
+                                className="mt-0.5"
+                              />
+                              <span className="text-foreground/85">
+                                <span className="font-medium">{formatEventDateTime(item.date, item.startTime)}</span>
+                                <span className="text-foreground/60"> vs {item.opponent || 'Soupeř'}</span>
+                                {item.isHome && (
+                                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300">doma</span>
+                                )}
+                                {!item.isHome && (
+                                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-300">venku</span>
+                                )}
+                                <span className="block text-xs text-foreground/50 truncate">
+                                  {item.fieldNumber ? `Hřiště č. ${item.fieldNumber}` : 'Strahov'} | Strahovská liga
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={importSelectedStrahovskaMatches}
+                            disabled={strahovskaImporting}
+                            className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium"
+                          >
+                            {strahovskaImporting ? 'Importuji...' : 'Importovat vybrané zápasy'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetStrahovskaImportSession({ keepFeedback: true });
+                              setStrahovskaPanelOpen(false);
+                            }}
+                            disabled={strahovskaImporting}
                             className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium"
                           >
                             Zrušit
