@@ -1007,7 +1007,7 @@ function HodnoceniHracuContent() {
   const icsFileInputRef = useRef<HTMLInputElement>(null);
   const [icsClubFilter, setIcsClubFilter] = useState('');
   const [icsCandidates, setIcsCandidates] = useState<IcsImportCandidate[]>([]);
-  const [icsPanelOpen, setIcsPanelOpen] = useState(false);
+  const [importSource, setImportSource] = useState<'none' | 'pick' | 'ics' | 'psmf' | 'strahovska'>('none');
   const [icsPreviewOpen, setIcsPreviewOpen] = useState(false);
   const [icsFeedback, setIcsFeedback] = useState<string | null>(null);
   const [icsParsing, setIcsParsing] = useState(false);
@@ -1021,7 +1021,6 @@ function HodnoceniHracuContent() {
   const [psmfSearchResults, setPsmfSearchResults] = useState<{ name: string; slug: string; division: string; url: string }[]>([]);
   const [psmfSelectedTeam, setPsmfSelectedTeam] = useState<{ name: string; url: string } | null>(null);
   const [psmfCandidates, setPsmfCandidates] = useState<PsmfImportCandidate[]>([]);
-  const [psmfPanelOpen, setPsmfPanelOpen] = useState(false);
   const [psmfPreviewOpen, setPsmfPreviewOpen] = useState(false);
   const [psmfFeedback, setPsmfFeedback] = useState<string | null>(null);
   const [psmfSearching, setPsmfSearching] = useState(false);
@@ -1033,7 +1032,6 @@ function HodnoceniHracuContent() {
   const [strahovskaSearchResults, setStrahovskaSearchResults] = useState<{ name: string; tid: string; division: string; url: string }[]>([]);
   const [strahovskaSelectedTeam, setStrahovskaSelectedTeam] = useState<{ name: string; tid: string } | null>(null);
   const [strahovskaCandidates, setStrahovskaCandidates] = useState<StrahovskaImportCandidate[]>([]);
-  const [strahovskaPanelOpen, setStrahovskaPanelOpen] = useState(false);
   const [strahovskaPreviewOpen, setStrahovskaPreviewOpen] = useState(false);
   const [strahovskaFeedback, setStrahovskaFeedback] = useState<string | null>(null);
   const [strahovskaSearching, setStrahovskaSearching] = useState(false);
@@ -1769,7 +1767,7 @@ function HodnoceniHracuContent() {
     try {
       const content = await file.text();
       const parsed = parseIcsImportCandidates(content, icsClubFilter);
-      setIcsPanelOpen(true);
+      setImportSource('ics');
       setIcsCandidates(parsed.candidates);
       setIcsPreviewOpen(parsed.candidates.length > 0);
       setIcsFeedback(
@@ -1858,7 +1856,7 @@ function HodnoceniHracuContent() {
         }, 2200);
       }
       resetIcsImportSession({ keepFeedback: true });
-      setIcsPanelOpen(false);
+      setImportSource('none');
       setIcsFeedback(`success:Import hotov. Přidáno: ${created}, přeskočeno (duplicitní): ${skipped}, chyby: ${failed}.`);
     } finally {
       setIcsImporting(false);
@@ -2039,7 +2037,7 @@ function HodnoceniHracuContent() {
         }, 2200);
       }
       resetPsmfImportSession({ keepFeedback: true });
-      setPsmfPanelOpen(false);
+      setImportSource('none');
       setPsmfFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, přeskočeno: ${skipped}, chyby: ${failed}.`);
     } finally {
       setPsmfImporting(false);
@@ -2217,7 +2215,7 @@ function HodnoceniHracuContent() {
         }, 2200);
       }
       resetStrahovskaImportSession({ keepFeedback: true });
-      setStrahovskaPanelOpen(false);
+      setImportSource('none');
       setStrahovskaFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, přeskočeno: ${skipped}, chyby: ${failed}.`);
     } finally {
       setStrahovskaImporting(false);
@@ -3008,524 +3006,288 @@ function HodnoceniHracuContent() {
                   {addingMatch ? '...' : 'Přidat zápas'}
                 </button>
               </form>
+              {/* Unified import panel */}
               <div className="mb-4 rounded-xl border border-border bg-surface/50 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-foreground">Import zápasů z rozpisu (.ics)</h3>
-                    <span className="text-xs text-foreground/60">Vybere jen zápasy obsahující název klubu</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!icsPanelOpen && icsCandidates.length > 0 && (
-                      <span className="text-[11px] px-2 py-1 rounded-full border border-blue-400/40 text-blue-300 bg-blue-500/10">
-                        Nalezeno {icsCandidates.length}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setIcsPanelOpen((prev) => !prev)}
-                      aria-expanded={icsPanelOpen}
-                      aria-controls="ics-import-panel"
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
-                    >
-                      Nahrát z .ics
-                      <span className="text-xs">{icsPanelOpen ? '▲' : '▼'}</span>
-                    </button>
-                  </div>
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setImportSource(importSource === 'none' ? 'pick' : 'none')}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+                  >
+                    Nahrát ze soutěže
+                    <span className="text-xs">{importSource !== 'none' ? '▲' : '▼'}</span>
+                  </button>
                 </div>
 
-                {!icsPanelOpen && icsFeedback && (
-                  <p className={`mt-2 text-xs ${icsFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
-                    {icsFeedback.replace(/^(success|error):/, '')}
-                  </p>
-                )}
-
-                <div
-                  id="ics-import-panel"
-                  className={`overflow-hidden transition-all duration-300 ease-out ${
-                    icsPanelOpen ? 'max-h-[920px] opacity-100 mt-3 translate-y-0' : 'max-h-0 opacity-0 -translate-y-1 pointer-events-none'
-                  }`}
-                >
-                  <div className="space-y-3">
-                    <p className="text-xs text-foreground/70">
-                      Jak získat .ics: Přihlaste se do fotbal.cz, otevřete svou soutěž, přejděte na stránku <span className="font-medium">„Rozpis zápasů a výsledků"</span> a dole klikněte na <span className="font-medium">„Export do kalendáře"</span>.
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <input
-                        type="text"
-                        value={icsClubFilter}
-                        onChange={(e) => setIcsClubFilter(e.target.value)}
-                        placeholder="Název klubu v rozpisu (např. FC MyPitch)"
-                        className="flex-1 min-w-0 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-sm"
-                      />
-                      <label className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm cursor-pointer hover:bg-surface">
-                        {icsParsing ? 'Načítám...' : 'Vybrat .ics'}
-                        <input
-                          ref={icsFileInputRef}
-                          type="file"
-                          accept=".ics,text/calendar"
-                          className="hidden"
-                          onChange={handleIcsFileChange}
-                          disabled={icsParsing}
-                        />
-                      </label>
-                    </div>
-
-                    {icsFeedback && (
-                      <p className={`text-xs ${icsFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
-                        {icsFeedback.replace(/^(success|error):/, '')}
-                      </p>
-                    )}
-
-                    {icsPreviewOpen && icsCandidates.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs text-foreground/70">
-                            Nalezeno {icsCandidates.length} zápasů, k importu vybráno {icsCandidates.filter((x) => x.selected).length}.
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setAllIcsCandidates(true)}
-                              className="text-xs text-foreground/70 hover:text-foreground"
-                            >
-                              Vybrat vše
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setAllIcsCandidates(false)}
-                              className="text-xs text-foreground/70 hover:text-foreground"
-                            >
-                              Zrušit výběr
-                            </button>
-                          </div>
-                        </div>
-                        <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
-                          {icsCandidates.map((item) => (
-                            <label key={`${item.uid}-${item.date}-${item.startTime}`} className="flex items-start gap-2 px-3 py-2 border-b border-border/60 last:border-b-0 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={item.selected}
-                                onChange={() => toggleIcsCandidate(item.uid)}
-                                className="mt-0.5"
-                              />
-                              <span className="text-foreground/85">
-                                <span className="font-medium">{formatEventDateTime(item.date, item.startTime)}</span>
-                                <span className="text-foreground/60"> vs {item.opponent || 'Soupeř'}</span>
-                                <span className="block text-xs text-foreground/50 truncate">{item.summary}</span>
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={importSelectedIcsMatches}
-                            disabled={icsImporting}
-                            className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium"
-                          >
-                            {icsImporting ? 'Importuji...' : 'Importovat vybrané zápasy'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              resetIcsImportSession({ keepFeedback: true });
-                              setIcsPanelOpen(false);
-                            }}
-                            disabled={icsImporting}
-                            className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium"
-                          >
-                            Zrušit
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              {/* Import z psmf.cz (Hanspaulská liga) */}
-              <div className="mb-4 rounded-xl border border-border bg-surface/50 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-foreground">Import z psmf.cz (Hanspaulská liga)</h3>
-                    <span className="text-xs text-foreground/60">Zadejte název svého klubu a načtěte rozpis</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!psmfPanelOpen && psmfCandidates.length > 0 && (
-                      <span className="text-[11px] px-2 py-1 rounded-full border border-blue-400/40 text-blue-300 bg-blue-500/10">
-                        Nalezeno {psmfCandidates.length}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setPsmfPanelOpen((prev) => !prev)}
-                      aria-expanded={psmfPanelOpen}
-                      aria-controls="psmf-import-panel"
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
-                    >
-                      Načíst z psmf.cz
-                      <span className="text-xs">{psmfPanelOpen ? '▲' : '▼'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {!psmfPanelOpen && psmfFeedback && (
-                  <p className={`mt-2 text-xs ${psmfFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
-                    {psmfFeedback.replace(/^(success|error):/, '')}
-                  </p>
-                )}
-
-                <div
-                  id="psmf-import-panel"
-                  className={`overflow-hidden transition-all duration-300 ease-out ${
-                    psmfPanelOpen ? 'max-h-[1200px] opacity-100 mt-3 translate-y-0' : 'max-h-0 opacity-0 -translate-y-1 pointer-events-none'
-                  }`}
-                >
-                  <div className="space-y-3">
-                    {/* Step 1: Club name search */}
-                    {!psmfSelectedTeam && (
-                      <>
-                        <p className="text-xs text-foreground/70">
-                          Zadejte název svého klubu v Hanspaulské lize (např. &quot;Huňáč&quot;, &quot;Dynamo&quot;, &quot;Sokol&quot;).
-                          {psmfSearching && ' První hledání může trvat déle (načítá se databáze týmů).'}
-                        </p>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <input
-                            type="text"
-                            value={psmfClubName}
-                            onChange={(e) => setPsmfClubName(e.target.value)}
-                            placeholder="Název klubu..."
-                            className="flex-1 min-w-0 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-sm"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handlePsmfSearch();
-                              }
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={handlePsmfSearch}
-                            disabled={psmfSearching}
-                            className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm hover:bg-surface disabled:opacity-50"
-                          >
-                            {psmfSearching ? 'Hledám...' : 'Hledat tým'}
-                          </button>
-                        </div>
-                      </>
-                    )}
-
-                    {/* Search results — pick team */}
-                    {psmfSearchResults.length > 1 && !psmfSelectedTeam && (
-                      <div className="space-y-1">
-                        <p className="text-xs text-foreground/70">Vyberte svůj tým:</p>
-                        <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
-                          {psmfSearchResults.map((t) => (
-                            <button
-                              key={t.slug}
-                              type="button"
-                              onClick={() => handlePsmfSelectTeam(t)}
-                              className="w-full flex items-center justify-between px-3 py-2 border-b border-border/60 last:border-b-0 text-sm text-left hover:bg-surface-hover transition-colors"
-                            >
-                              <span className="font-medium text-foreground">{t.name}</span>
-                              <span className="text-[11px] text-foreground/50 ml-2 shrink-0">{t.division}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Selected team indicator */}
-                    {psmfSelectedTeam && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-foreground/70">Tým:</span>
-                        <span className="font-medium text-foreground">{psmfSelectedTeam.name}</span>
+                {importSource !== 'none' && (
+                  <div className="mt-3 space-y-3">
+                    {/* Source picker */}
+                    {importSource === 'pick' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            setPsmfSelectedTeam(null);
-                            setPsmfCandidates([]);
-                            setPsmfPreviewOpen(false);
-                            setPsmfFeedback(null);
-                            setPsmfSearchResults([]);
-                          }}
-                          className="text-xs text-foreground/50 hover:text-foreground underline ml-1"
+                          onClick={() => setImportSource('ics')}
+                          className="flex flex-col items-start gap-1 px-3 py-3 rounded-lg border border-border hover:bg-surface-hover transition-colors text-left"
                         >
-                          změnit
+                          <span className="text-sm font-medium text-foreground">FAČR (.ics soubor)</span>
+                          <span className="text-[11px] text-foreground/50">Export z fotbal.cz</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setImportSource('psmf')}
+                          className="flex flex-col items-start gap-1 px-3 py-3 rounded-lg border border-border hover:bg-surface-hover transition-colors text-left"
+                        >
+                          <span className="text-sm font-medium text-foreground">Hanspaulská liga</span>
+                          <span className="text-[11px] text-foreground/50">psmf.cz</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setImportSource('strahovska')}
+                          className="flex flex-col items-start gap-1 px-3 py-3 rounded-lg border border-border hover:bg-surface-hover transition-colors text-left"
+                        >
+                          <span className="text-sm font-medium text-foreground">Strahovská liga</span>
+                          <span className="text-[11px] text-foreground/50">strahovskaliga.cz</span>
                         </button>
                       </div>
                     )}
 
-                    {/* Loading spinner */}
-                    {psmfParsing && (
-                      <p className="text-xs text-foreground/60">Načítám rozpis zápasů...</p>
+                    {/* Back button when inside a source */}
+                    {importSource !== 'pick' && (
+                      <button
+                        type="button"
+                        onClick={() => setImportSource('pick')}
+                        className="text-xs text-foreground/50 hover:text-foreground"
+                      >
+                        ← Zpět na výběr soutěže
+                      </button>
                     )}
 
-                    {psmfFeedback && (
-                      <p className={`text-xs ${psmfFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
-                        {psmfFeedback.replace(/^(success|error):/, '')}
-                      </p>
-                    )}
-
-                    {/* Step 2: Match candidates */}
-                    {psmfPreviewOpen && psmfCandidates.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs text-foreground/70">
-                            Nalezeno {psmfCandidates.length} zápasů, k importu vybráno{' '}
-                            {psmfCandidates.filter((x) => x.selected).length}.
-                          </p>
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => setAllPsmfCandidates(true)} className="text-xs text-foreground/70 hover:text-foreground">
-                              Vybrat vše
-                            </button>
-                            <button type="button" onClick={() => setAllPsmfCandidates(false)} className="text-xs text-foreground/70 hover:text-foreground">
-                              Zrušit výběr
-                            </button>
-                          </div>
-                        </div>
-                        <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
-                          {psmfCandidates.map((item) => (
-                            <label key={item.uid} className="flex items-start gap-2 px-3 py-2 border-b border-border/60 last:border-b-0 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={item.selected}
-                                onChange={() => togglePsmfCandidate(item.uid)}
-                                className="mt-0.5"
-                              />
-                              <span className="text-foreground/85">
-                                <span className="font-medium">{formatEventDateTime(item.date, item.startTime)}</span>
-                                <span className="text-foreground/60"> vs {item.opponent || 'Soupeř'}</span>
-                                {item.isHome && (
-                                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300">doma</span>
-                                )}
-                                {!item.isHome && (
-                                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-300">venku</span>
-                                )}
-                                <span className="block text-xs text-foreground/50 truncate">
-                                  {item.venueAbbrev}
-                                  {item.venueName ? ` – ${item.venueName}` : ''} | Kolo {item.round}
-                                </span>
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={importSelectedPsmfMatches}
-                            disabled={psmfImporting}
-                            className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium"
-                          >
-                            {psmfImporting ? 'Importuji...' : 'Importovat vybrané zápasy'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              resetPsmfImportSession({ keepFeedback: true });
-                              setPsmfPanelOpen(false);
-                            }}
-                            disabled={psmfImporting}
-                            className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium"
-                          >
-                            Zrušit
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              {/* Import ze strahovskaliga.cz (Strahovská liga) */}
-              <div className="mb-4 rounded-xl border border-border bg-surface/50 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-foreground">Import ze strahovskaliga.cz (Strahovská liga)</h3>
-                    <span className="text-xs text-foreground/60">Zadejte název svého klubu a načtěte rozpis</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!strahovskaPanelOpen && strahovskaCandidates.length > 0 && (
-                      <span className="text-[11px] px-2 py-1 rounded-full border border-emerald-400/40 text-emerald-300 bg-emerald-500/10">
-                        Nalezeno {strahovskaCandidates.length}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setStrahovskaPanelOpen((prev) => !prev)}
-                      aria-expanded={strahovskaPanelOpen}
-                      aria-controls="strahovska-import-panel"
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors"
-                    >
-                      Načíst ze strahovskaliga.cz
-                      <span className="text-xs">{strahovskaPanelOpen ? '▲' : '▼'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {!strahovskaPanelOpen && strahovskaFeedback && (
-                  <p className={`mt-2 text-xs ${strahovskaFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
-                    {strahovskaFeedback.replace(/^(success|error):/, '')}
-                  </p>
-                )}
-
-                <div
-                  id="strahovska-import-panel"
-                  className={`overflow-hidden transition-all duration-300 ease-out ${
-                    strahovskaPanelOpen ? 'max-h-[1200px] opacity-100 mt-3 translate-y-0' : 'max-h-0 opacity-0 -translate-y-1 pointer-events-none'
-                  }`}
-                >
-                  <div className="space-y-3">
-                    {/* Step 1: Club name search */}
-                    {!strahovskaSelectedTeam && (
-                      <>
+                    {/* === ICS Panel === */}
+                    {importSource === 'ics' && (
+                      <div className="space-y-3">
                         <p className="text-xs text-foreground/70">
-                          Zadejte název svého klubu ve Strahovské lize (např. &quot;Strojárna&quot;, &quot;Gargamel&quot;).
-                          {strahovskaSearching && ' První hledání může trvat déle (načítá se databáze týmů).'}
+                          Jak získat .ics: Přihlaste se do fotbal.cz, otevřete svou soutěž, přejděte na stránku <span className="font-medium">{'"'}Rozpis zápasů a výsledků{'"'}</span> a dole klikněte na <span className="font-medium">{'"'}Export do kalendáře{'"'}</span>.
                         </p>
                         <div className="flex flex-col sm:flex-row gap-2">
                           <input
                             type="text"
-                            value={strahovskaClubName}
-                            onChange={(e) => setStrahovskaClubName(e.target.value)}
-                            placeholder="Název klubu..."
+                            value={icsClubFilter}
+                            onChange={(e) => setIcsClubFilter(e.target.value)}
+                            placeholder="Název klubu v rozpisu (např. FC MyPitch)"
                             className="flex-1 min-w-0 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-sm"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleStrahovskaSearch();
-                              }
-                            }}
                           />
-                          <button
-                            type="button"
-                            onClick={handleStrahovskaSearch}
-                            disabled={strahovskaSearching}
-                            className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm hover:bg-surface disabled:opacity-50"
-                          >
-                            {strahovskaSearching ? 'Hledám...' : 'Hledat tým'}
-                          </button>
+                          <label className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm cursor-pointer hover:bg-surface">
+                            {icsParsing ? 'Načítám...' : 'Vybrat .ics'}
+                            <input
+                              ref={icsFileInputRef}
+                              type="file"
+                              accept=".ics,text/calendar"
+                              className="hidden"
+                              onChange={handleIcsFileChange}
+                              disabled={icsParsing}
+                            />
+                          </label>
                         </div>
-                      </>
-                    )}
-
-                    {/* Search results — pick team */}
-                    {strahovskaSearchResults.length > 1 && !strahovskaSelectedTeam && (
-                      <div className="space-y-1">
-                        <p className="text-xs text-foreground/70">Vyberte svůj tým:</p>
-                        <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
-                          {strahovskaSearchResults.map((t) => (
-                            <button
-                              key={t.tid}
-                              type="button"
-                              onClick={() => handleStrahovskaSelectTeam(t)}
-                              className="w-full flex items-center justify-between px-3 py-2 border-b border-border/60 last:border-b-0 text-sm text-left hover:bg-surface-hover transition-colors"
-                            >
-                              <span className="font-medium text-foreground">{t.name}</span>
-                              <span className="text-[11px] text-foreground/50 ml-2 shrink-0">{t.division}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Selected team indicator */}
-                    {strahovskaSelectedTeam && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-foreground/70">Tým:</span>
-                        <span className="font-medium text-foreground">{strahovskaSelectedTeam.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStrahovskaSelectedTeam(null);
-                            setStrahovskaCandidates([]);
-                            setStrahovskaPreviewOpen(false);
-                            setStrahovskaFeedback(null);
-                            setStrahovskaSearchResults([]);
-                          }}
-                          className="text-xs text-foreground/50 hover:text-foreground underline ml-1"
-                        >
-                          změnit
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Loading spinner */}
-                    {strahovskaParsing && (
-                      <p className="text-xs text-foreground/60">Načítám rozpis zápasů...</p>
-                    )}
-
-                    {strahovskaFeedback && (
-                      <p className={`text-xs ${strahovskaFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
-                        {strahovskaFeedback.replace(/^(success|error):/, '')}
-                      </p>
-                    )}
-
-                    {/* Step 2: Match candidates */}
-                    {strahovskaPreviewOpen && strahovskaCandidates.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs text-foreground/70">
-                            Nalezeno {strahovskaCandidates.length} zápasů, k importu vybráno{' '}
-                            {strahovskaCandidates.filter((x) => x.selected).length}.
+                        {icsFeedback && (
+                          <p className={`text-xs ${icsFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
+                            {icsFeedback.replace(/^(success|error):/, '')}
                           </p>
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => setAllStrahovskaCandidates(true)} className="text-xs text-foreground/70 hover:text-foreground">
-                              Vybrat vše
-                            </button>
-                            <button type="button" onClick={() => setAllStrahovskaCandidates(false)} className="text-xs text-foreground/70 hover:text-foreground">
-                              Zrušit výběr
-                            </button>
+                        )}
+                        {icsPreviewOpen && icsCandidates.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs text-foreground/70">
+                                Nalezeno {icsCandidates.length} zápasů, k importu vybráno {icsCandidates.filter((x) => x.selected).length}.
+                              </p>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => setAllIcsCandidates(true)} className="text-xs text-foreground/70 hover:text-foreground">Vybrat vše</button>
+                                <button type="button" onClick={() => setAllIcsCandidates(false)} className="text-xs text-foreground/70 hover:text-foreground">Zrušit výběr</button>
+                              </div>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
+                              {icsCandidates.map((item) => (
+                                <label key={`${item.uid}-${item.date}-${item.startTime}`} className="flex items-start gap-2 px-3 py-2 border-b border-border/60 last:border-b-0 text-sm">
+                                  <input type="checkbox" checked={item.selected} onChange={() => toggleIcsCandidate(item.uid)} className="mt-0.5" />
+                                  <span className="text-foreground/85">
+                                    <span className="font-medium">{formatEventDateTime(item.date, item.startTime)}</span>
+                                    <span className="text-foreground/60"> vs {item.opponent || 'Soupeř'}</span>
+                                    <span className="block text-xs text-foreground/50 truncate">{item.summary}</span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button type="button" onClick={importSelectedIcsMatches} disabled={icsImporting} className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium">
+                                {icsImporting ? 'Importuji...' : 'Importovat vybrané zápasy'}
+                              </button>
+                              <button type="button" onClick={() => { resetIcsImportSession({ keepFeedback: true }); setImportSource('none'); }} disabled={icsImporting} className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium">
+                                Zrušit
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                        <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
-                          {strahovskaCandidates.map((item) => (
-                            <label key={item.uid} className="flex items-start gap-2 px-3 py-2 border-b border-border/60 last:border-b-0 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={item.selected}
-                                onChange={() => toggleStrahovskaCandidate(item.uid)}
-                                className="mt-0.5"
-                              />
-                              <span className="text-foreground/85">
-                                <span className="font-medium">{formatEventDateTime(item.date, item.startTime)}</span>
-                                <span className="text-foreground/60"> vs {item.opponent || 'Soupeř'}</span>
-                                {item.isHome && (
-                                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300">doma</span>
-                                )}
-                                {!item.isHome && (
-                                  <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-300">venku</span>
-                                )}
-                                <span className="block text-xs text-foreground/50 truncate">
-                                  {item.fieldNumber ? `Hřiště č. ${item.fieldNumber}` : 'Strahov'} | Strahovská liga
-                                </span>
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={importSelectedStrahovskaMatches}
-                            disabled={strahovskaImporting}
-                            className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium"
-                          >
-                            {strahovskaImporting ? 'Importuji...' : 'Importovat vybrané zápasy'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              resetStrahovskaImportSession({ keepFeedback: true });
-                              setStrahovskaPanelOpen(false);
-                            }}
-                            disabled={strahovskaImporting}
-                            className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium"
-                          >
-                            Zrušit
-                          </button>
-                        </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* === PSMF Panel === */}
+                    {importSource === 'psmf' && (
+                      <div className="space-y-3">
+                        {!psmfSelectedTeam && (
+                          <>
+                            <p className="text-xs text-foreground/70">
+                              Zadejte název svého klubu v Hanspaulské lize (např. &quot;Huňáč&quot;, &quot;Dynamo&quot;, &quot;Sokol&quot;).
+                              {psmfSearching && ' První hledání může trvat déle (načítá se databáze týmů).'}
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input type="text" value={psmfClubName} onChange={(e) => setPsmfClubName(e.target.value)} placeholder="Název klubu..." className="flex-1 min-w-0 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-sm" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handlePsmfSearch(); } }} />
+                              <button type="button" onClick={handlePsmfSearch} disabled={psmfSearching} className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm hover:bg-surface disabled:opacity-50">
+                                {psmfSearching ? 'Hledám...' : 'Hledat tým'}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                        {psmfSearchResults.length > 1 && !psmfSelectedTeam && (
+                          <div className="space-y-1">
+                            <p className="text-xs text-foreground/70">Vyberte svůj tým:</p>
+                            <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
+                              {psmfSearchResults.map((t) => (
+                                <button key={t.slug} type="button" onClick={() => handlePsmfSelectTeam(t)} className="w-full flex items-center justify-between px-3 py-2 border-b border-border/60 last:border-b-0 text-sm text-left hover:bg-surface-hover transition-colors">
+                                  <span className="font-medium text-foreground">{t.name}</span>
+                                  <span className="text-[11px] text-foreground/50 ml-2 shrink-0">{t.division}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {psmfSelectedTeam && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-foreground/70">Tým:</span>
+                            <span className="font-medium text-foreground">{psmfSelectedTeam.name}</span>
+                            <button type="button" onClick={() => { setPsmfSelectedTeam(null); setPsmfCandidates([]); setPsmfPreviewOpen(false); setPsmfFeedback(null); setPsmfSearchResults([]); }} className="text-xs text-foreground/50 hover:text-foreground underline ml-1">změnit</button>
+                          </div>
+                        )}
+                        {psmfParsing && <p className="text-xs text-foreground/60">Načítám rozpis zápasů...</p>}
+                        {psmfFeedback && (
+                          <p className={`text-xs ${psmfFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
+                            {psmfFeedback.replace(/^(success|error):/, '')}
+                          </p>
+                        )}
+                        {psmfPreviewOpen && psmfCandidates.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs text-foreground/70">Nalezeno {psmfCandidates.length} zápasů, k importu vybráno {psmfCandidates.filter((x) => x.selected).length}.</p>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => setAllPsmfCandidates(true)} className="text-xs text-foreground/70 hover:text-foreground">Vybrat vše</button>
+                                <button type="button" onClick={() => setAllPsmfCandidates(false)} className="text-xs text-foreground/70 hover:text-foreground">Zrušit výběr</button>
+                              </div>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
+                              {psmfCandidates.map((item) => (
+                                <label key={item.uid} className="flex items-start gap-2 px-3 py-2 border-b border-border/60 last:border-b-0 text-sm">
+                                  <input type="checkbox" checked={item.selected} onChange={() => togglePsmfCandidate(item.uid)} className="mt-0.5" />
+                                  <span className="text-foreground/85">
+                                    <span className="font-medium">{formatEventDateTime(item.date, item.startTime)}</span>
+                                    <span className="text-foreground/60"> vs {item.opponent || 'Soupeř'}</span>
+                                    {item.isHome && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300">doma</span>}
+                                    {!item.isHome && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-300">venku</span>}
+                                    <span className="block text-xs text-foreground/50 truncate">{item.venueAbbrev}{item.venueName ? ` – ${item.venueName}` : ''} | Kolo {item.round}</span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button type="button" onClick={importSelectedPsmfMatches} disabled={psmfImporting} className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium">
+                                {psmfImporting ? 'Importuji...' : 'Importovat vybrané zápasy'}
+                              </button>
+                              <button type="button" onClick={() => { resetPsmfImportSession({ keepFeedback: true }); setImportSource('none'); }} disabled={psmfImporting} className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium">
+                                Zrušit
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* === Strahovska Panel === */}
+                    {importSource === 'strahovska' && (
+                      <div className="space-y-3">
+                        {!strahovskaSelectedTeam && (
+                          <>
+                            <p className="text-xs text-foreground/70">
+                              Zadejte název svého klubu ve Strahovské lize (např. &quot;Strojárna&quot;, &quot;Gargamel&quot;).
+                              {strahovskaSearching && ' První hledání může trvat déle (načítá se databáze týmů).'}
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input type="text" value={strahovskaClubName} onChange={(e) => setStrahovskaClubName(e.target.value)} placeholder="Název klubu..." className="flex-1 min-w-0 px-3 py-2 rounded-lg glass-input text-foreground placeholder-white/50 text-sm" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleStrahovskaSearch(); } }} />
+                              <button type="button" onClick={handleStrahovskaSearch} disabled={strahovskaSearching} className="px-3 py-2 rounded-lg bg-surface-hover border border-border text-foreground text-sm hover:bg-surface disabled:opacity-50">
+                                {strahovskaSearching ? 'Hledám...' : 'Hledat tým'}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                        {strahovskaSearchResults.length > 1 && !strahovskaSelectedTeam && (
+                          <div className="space-y-1">
+                            <p className="text-xs text-foreground/70">Vyberte svůj tým:</p>
+                            <div className="max-h-40 overflow-y-auto rounded-lg border border-border">
+                              {strahovskaSearchResults.map((t) => (
+                                <button key={t.tid} type="button" onClick={() => handleStrahovskaSelectTeam(t)} className="w-full flex items-center justify-between px-3 py-2 border-b border-border/60 last:border-b-0 text-sm text-left hover:bg-surface-hover transition-colors">
+                                  <span className="font-medium text-foreground">{t.name}</span>
+                                  <span className="text-[11px] text-foreground/50 ml-2 shrink-0">{t.division}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {strahovskaSelectedTeam && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-foreground/70">Tým:</span>
+                            <span className="font-medium text-foreground">{strahovskaSelectedTeam.name}</span>
+                            <button type="button" onClick={() => { setStrahovskaSelectedTeam(null); setStrahovskaCandidates([]); setStrahovskaPreviewOpen(false); setStrahovskaFeedback(null); setStrahovskaSearchResults([]); }} className="text-xs text-foreground/50 hover:text-foreground underline ml-1">změnit</button>
+                          </div>
+                        )}
+                        {strahovskaParsing && <p className="text-xs text-foreground/60">Načítám rozpis zápasů...</p>}
+                        {strahovskaFeedback && (
+                          <p className={`text-xs ${strahovskaFeedback.startsWith('error:') ? 'text-red-300' : 'text-emerald-300'}`}>
+                            {strahovskaFeedback.replace(/^(success|error):/, '')}
+                          </p>
+                        )}
+                        {strahovskaPreviewOpen && strahovskaCandidates.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs text-foreground/70">Nalezeno {strahovskaCandidates.length} zápasů, k importu vybráno {strahovskaCandidates.filter((x) => x.selected).length}.</p>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => setAllStrahovskaCandidates(true)} className="text-xs text-foreground/70 hover:text-foreground">Vybrat vše</button>
+                                <button type="button" onClick={() => setAllStrahovskaCandidates(false)} className="text-xs text-foreground/70 hover:text-foreground">Zrušit výběr</button>
+                              </div>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
+                              {strahovskaCandidates.map((item) => (
+                                <label key={item.uid} className="flex items-start gap-2 px-3 py-2 border-b border-border/60 last:border-b-0 text-sm">
+                                  <input type="checkbox" checked={item.selected} onChange={() => toggleStrahovskaCandidate(item.uid)} className="mt-0.5" />
+                                  <span className="text-foreground/85">
+                                    <span className="font-medium">{formatEventDateTime(item.date, item.startTime)}</span>
+                                    <span className="text-foreground/60"> vs {item.opponent || 'Soupeř'}</span>
+                                    {item.isHome && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300">doma</span>}
+                                    {!item.isHome && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-300">venku</span>}
+                                    <span className="block text-xs text-foreground/50 truncate">{item.fieldNumber ? `Hřiště č. ${item.fieldNumber}` : 'Strahov'} | Strahovská liga</span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button type="button" onClick={importSelectedStrahovskaMatches} disabled={strahovskaImporting} className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium">
+                                {strahovskaImporting ? 'Importuji...' : 'Importovat vybrané zápasy'}
+                              </button>
+                              <button type="button" onClick={() => { resetStrahovskaImportSession({ keepFeedback: true }); setImportSource('none'); }} disabled={strahovskaImporting} className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-hover disabled:opacity-50 text-foreground text-sm font-medium">
+                                Zrušit
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                </div>
+                )}
               </div>
               <ul className="space-y-2">
                 {filteredMatches.map((m) => {
