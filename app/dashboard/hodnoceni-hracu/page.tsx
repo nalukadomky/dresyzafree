@@ -1072,9 +1072,10 @@ function HodnoceniHracuContent() {
 
   const matchSeasons = [...new Set(matches.map((m) => getSeasonFromDate(m.date)))].sort().reverse();
   const selectedSeason = matchesSeason;
-  const filteredMatches = selectedSeason === '__all__'
+  const filteredMatches = (selectedSeason === '__all__'
     ? matches
-    : matches.filter((m) => getSeasonFromDate(m.date) === selectedSeason);
+    : matches.filter((m) => getSeasonFromDate(m.date) === selectedSeason)
+  ).sort((a, b) => `${a.date} ${a.startTime ?? ''}`.localeCompare(`${b.date} ${b.startTime ?? ''}`));
   const playedMatches = matches
     .filter((m) => isMatchPlayed(m.date, m.startTime))
     .sort((a, b) => `${b.date} ${b.startTime ?? ''}`.localeCompare(`${a.date} ${a.startTime ?? ''}`));
