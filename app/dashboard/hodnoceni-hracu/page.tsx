@@ -2465,11 +2465,21 @@ function HodnoceniHracuContent() {
                                             key={ev.id}
                                             className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 px-3 rounded-lg bg-surface border border-border mb-2 gap-2"
                                           >
-                                            <span className="text-foreground text-sm sm:text-base min-w-0">
-                                              {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}
-                                              {ev.location && ` • ${ev.location}`}
-                                              {ev.opponent && ev.opponent !== ev.location && ` vs ${ev.opponent}`}
-                                            </span>
+                                            <div className="min-w-0">
+                                              <div className="text-foreground text-sm sm:text-base font-medium">
+                                                {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}
+                                              </div>
+                                              {ev.location && (
+                                                <div className="text-foreground/60 text-xs sm:text-sm">
+                                                  📍 {ev.location}
+                                                </div>
+                                              )}
+                                              {ev.opponent && ev.opponent !== ev.location && (
+                                                <div className="text-blue-400 text-sm sm:text-base">
+                                                  ⚽ vs {ev.opponent}
+                                                </div>
+                                              )}
+                                            </div>
                                             <div className="flex items-center gap-3 shrink-0">
                                               {sum && (
                                                 <span className="text-foreground/60 text-xs tabular-nums whitespace-nowrap" title="zúčastní • nezúčastní • neodpověděli">
@@ -3683,14 +3693,24 @@ function HodnoceniHracuContent() {
                           onClick={() => openUcastModal(ev)}
                           className="text-left flex-1"
                         >
-                          <span className="text-foreground">
-                            {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}
-                            {ev.location && ` • ${ev.location}`}
-                            {ev.opponent && ev.opponent !== ev.location && ` vs ${ev.opponent}`}
-                            {ev.note && (
-                              <span className="block text-foreground/70 text-sm mt-0.5">{ev.note}</span>
+                          <div className="text-foreground">
+                            <div className="font-medium">
+                              {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}
+                            </div>
+                            {ev.location && (
+                              <div className="text-foreground/60 text-xs sm:text-sm">
+                                📍 {ev.location}
+                              </div>
                             )}
-                          </span>
+                            {ev.opponent && ev.opponent !== ev.location && (
+                              <div className="text-blue-400 text-sm">
+                                ⚽ vs {ev.opponent}
+                              </div>
+                            )}
+                            {ev.note && (
+                              <div className="text-foreground/70 text-xs mt-0.5">{ev.note}</div>
+                            )}
+                          </div>
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
