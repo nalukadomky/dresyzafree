@@ -758,7 +758,7 @@ export default function TeamWebBuilder() {
           {/* Center: Slug */}
           <div className="flex items-center gap-2 flex-1 max-w-md mx-auto">
             <div className="flex items-center glass-input rounded-lg px-3 text-sm flex-1">
-              <span className="text-foreground/30 shrink-0 text-xs">/t/</span>
+              <span className="text-foreground/30 shrink-0 text-xs">mypitch.cz/</span>
               <input
                 type="text"
                 value={slug}
@@ -826,7 +826,7 @@ export default function TeamWebBuilder() {
 
             {slug && website?.published && (
               <a
-                href={`/t/${slug}`}
+                href={`/${slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors"
@@ -867,7 +867,7 @@ export default function TeamWebBuilder() {
               </div>
               <div className="flex-1 mx-4">
                 <div className="bg-white rounded-md px-3 py-1 text-xs text-slate-400 text-center border border-slate-200">
-                  {slug ? `mypitch.cz/t/${slug}` : 'mypitch.cz/t/vas-tym'}
+                  {slug ? `mypitch.cz/${slug}` : 'mypitch.cz/vas-tym'}
                 </div>
               </div>
             </div>
