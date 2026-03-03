@@ -653,6 +653,7 @@ function MatchResultPopup({
   const [matchRating, setMatchRating] = useState(match.matchRating ?? 5);
   const [scorers, setScorers] = useState<{ goalOrder: number; playerId: string }[]>([]);
   const [assists, setAssists] = useState<{ assistOrder: number; playerId: string }[]>([]);
+  const [cards, setCards] = useState<{ playerId: string; cardType: 'yellow' | 'red' }[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [loaded, setLoaded] = useState(false);
@@ -670,8 +671,10 @@ function MatchResultPopup({
           const d = await res.json();
           const s = (d.scorers || []).map((x: any) => ({ goalOrder: x.goalOrder, playerId: x.playerId }));
           const a = (d.assists || []).map((x: any) => ({ assistOrder: x.assistOrder, playerId: x.playerId }));
+          const c = (d.cards || []).map((x: any) => ({ playerId: x.playerId, cardType: x.cardType as 'yellow' | 'red' }));
           setScorers(s);
           setAssists(a);
+          setCards(c);
         }
       } finally {
         setLoaded(true);
@@ -713,13 +716,15 @@ function MatchResultPopup({
         setSaveError(d.error || 'Chyba při ukládání skóre');
         return;
       }
-      if (gfCount > 0) {
+      const validCards = cards.filter(c => c.playerId);
+      if (gfCount > 0 || validCards.length > 0) {
         await fetch(`/api/teams/${teamId}/matches/${match.id}/scorers`, {
           method: 'PATCH',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             scorers: scorers.filter(s => s.playerId).map(s => ({ goalOrder: s.goalOrder, playerId: s.playerId })),
             assists: assists.filter(a => a.playerId).map(a => ({ assistOrder: a.assistOrder, playerId: a.playerId })),
+            cards: validCards.map(c => ({ playerId: c.playerId, cardType: c.cardType })),
           }),
         });
       }
@@ -811,6 +816,69 @@ function MatchResultPopup({
                         {players.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cards */}
+          {loaded && (
+            <div className="mb-5">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-foreground/70 text-xs font-medium uppercase tracking-wide">Karty</p>
+                <button
+                  type="button"
+                  onClick={() => setCards(prev => [...prev, { playerId: '', cardType: 'yellow' }])}
+                  className="text-xs text-foreground/50 hover:text-foreground transition-colors"
+                >
+                  + Přidat kartu
+                </button>
+              </div>
+              {cards.length === 0 && (
+                <p className="text-foreground/30 text-xs italic">Žádné karty</p>
+              )}
+              <div className="space-y-2">
+                {cards.map((card, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Select
+                      value={card.playerId || '__none__'}
+                      onValueChange={v => setCards(prev => prev.map((c, j) => j === i ? { ...c, playerId: v === '__none__' ? '' : v } : c))}
+                    >
+                      <SelectTrigger className="h-8 flex-1 min-w-0 rounded-lg glass-input text-foreground text-sm">
+                        <SelectValue placeholder="Hráč" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— Hráč —</SelectItem>
+                        {players.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex shrink-0 rounded-lg overflow-hidden border border-white/10">
+                      <button
+                        type="button"
+                        onClick={() => setCards(prev => prev.map((c, j) => j === i ? { ...c, cardType: 'yellow' } : c))}
+                        className={`px-2.5 py-1.5 text-sm transition-colors ${card.cardType === 'yellow' ? 'bg-yellow-500/30 text-yellow-300' : 'text-foreground/30 hover:text-foreground/50'}`}
+                        title="Žlutá karta"
+                      >
+                        🟨
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCards(prev => prev.map((c, j) => j === i ? { ...c, cardType: 'red' } : c))}
+                        className={`px-2.5 py-1.5 text-sm transition-colors ${card.cardType === 'red' ? 'bg-red-500/30 text-red-300' : 'text-foreground/30 hover:text-foreground/50'}`}
+                        title="Červená karta"
+                      >
+                        🟥
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCards(prev => prev.filter((_, j) => j !== i))}
+                      className="text-foreground/30 hover:text-red-400 text-sm shrink-0 transition-colors"
+                      title="Odebrat"
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>

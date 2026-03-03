@@ -251,11 +251,37 @@ export const dbPlayers = {
         if (e2) throw new Error(e2.message);
       }
     },
+    getCards: async (matchId: string): Promise<{ playerId: string; cardType: string }[]> => {
+      const { data, error } = await client!
+        .from('match_cards')
+        .select('player_id, card_type')
+        .eq('match_id', matchId)
+        .order('created_at');
+      if (error) throw new Error(error.message);
+      return (data || []).map((r: { player_id: string; card_type: string }) => ({
+        playerId: r.player_id,
+        cardType: r.card_type,
+      }));
+    },
+    setCards: async (
+      matchId: string,
+      teamId: string,
+      cards: { playerId: string; cardType: string }[]
+    ): Promise<void> => {
+      const match = await client!.from('matches').select('team_id').eq('id', matchId).eq('team_id', teamId).single();
+      if (match.error || !match.data) throw new Error('Zápas nenalezen');
+      await client!.from('match_cards').delete().eq('match_id', matchId);
+      if (cards.length > 0) {
+        const rows = cards.map((c) => ({ match_id: matchId, player_id: c.playerId, card_type: c.cardType }));
+        const { error: e } = await client!.from('match_cards').insert(rows);
+        if (e) throw new Error(e.message);
+      }
+    },
     /** Kanadské bodování: góly + asistence (1 asistence = 1b), seřazeno podle součtu */
     getCanadianScoring: async (
       teamId: string,
       options?: { season?: string }
-    ): Promise<{ playerId: string; playerName: string; goals: number; assists: number; total: number }[]> => {
+    ): Promise<{ playerId: string; playerName: string; goals: number; assists: number; yellowCards: number; redCards: number; total: number }[]> => {
       const matchesRes = await client!.from('matches').select('id, date').eq('team_id', teamId);
       let matchIds = (matchesRes.data || []).map((m: { id: string }) => m.id);
       const matchesWithDate = (matchesRes.data || []) as { id: string; date: string }[];
@@ -271,14 +297,15 @@ export const dbPlayers = {
           .map((m) => m.id);
       }
       if (matchIds.length === 0) return [];
-      const [scorersRes, assistsRes, playersRes] = await Promise.all([
+      const [scorersRes, assistsRes, cardsRes, playersRes] = await Promise.all([
         client!.from('match_goal_scorers').select('player_id').in('match_id', matchIds),
         client!.from('match_assists').select('player_id').in('match_id', matchIds),
+        client!.from('match_cards').select('player_id, card_type').in('match_id', matchIds),
         client!.from('players').select('id, name').eq('team_id', teamId),
       ]);
       const players = (playersRes.data || []) as { id: string; name: string }[];
-      const byPlayer: Record<string, { goals: number; assists: number }> = {};
-      for (const p of players) byPlayer[p.id] = { goals: 0, assists: 0 };
+      const byPlayer: Record<string, { goals: number; assists: number; yellowCards: number; redCards: number }> = {};
+      for (const p of players) byPlayer[p.id] = { goals: 0, assists: 0, yellowCards: 0, redCards: 0 };
       for (const r of scorersRes.data || []) {
         const row = r as { player_id: string };
         if (byPlayer[row.player_id]) byPlayer[row.player_id].goals += 1;
@@ -286,6 +313,13 @@ export const dbPlayers = {
       for (const r of assistsRes.data || []) {
         const row = r as { player_id: string };
         if (byPlayer[row.player_id]) byPlayer[row.player_id].assists += 1;
+      }
+      for (const r of cardsRes.data || []) {
+        const row = r as { player_id: string; card_type: string };
+        if (byPlayer[row.player_id]) {
+          if (row.card_type === 'yellow') byPlayer[row.player_id].yellowCards += 1;
+          else if (row.card_type === 'red') byPlayer[row.player_id].redCards += 1;
+        }
       }
       return players
         .map((p) => {
@@ -295,10 +329,12 @@ export const dbPlayers = {
             playerName: p.name,
             goals: d?.goals ?? 0,
             assists: d?.assists ?? 0,
+            yellowCards: d?.yellowCards ?? 0,
+            redCards: d?.redCards ?? 0,
             total: (d?.goals ?? 0) + (d?.assists ?? 0),
           };
         })
-        .filter((x) => x.total > 0)
+        .filter((x) => x.total > 0 || x.yellowCards > 0 || x.redCards > 0)
         .sort((a, b) => b.total - a.total || b.goals - a.goals || b.assists - a.assists);
     },
   },

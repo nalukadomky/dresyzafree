@@ -64,16 +64,37 @@ export default function PlayerDetailModal({
   const [ratings, setRatings] = useState<MatchRating[]>([]);
   const [loadingRatings, setLoadingRatings] = useState(true);
 
+  // Season stats (goals, assists, cards)
+  const [playerStats, setPlayerStats] = useState<{ goals: number; assists: number; yellowCards: number; redCards: number } | null>(null);
+
+  // Current season label (July–June)
+  const currentSeason = (() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    return m >= 7 ? `${y}/${String(y + 1).slice(-2)}` : `${y - 1}/${String(y).slice(-2)}`;
+  })();
+
   useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const res = await fetch(
-          `/api/teams/${teamId}/ratings?playerId=${player.id}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const d = await res.json().catch(() => ({}));
-        if (active && d.playerRatings) setRatings(d.playerRatings);
+        const [ratingsRes, statsRes] = await Promise.all([
+          fetch(`/api/teams/${teamId}/ratings?playerId=${player.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`/api/teams/${teamId}/canadian-scoring?season=${encodeURIComponent(currentSeason)}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+        const ratingsData = await ratingsRes.json().catch(() => ({}));
+        if (active && ratingsData.playerRatings) setRatings(ratingsData.playerRatings);
+        const statsData = await statsRes.json().catch(() => ({}));
+        if (active && statsData.stats) {
+          const found = (statsData.stats as { playerId: string; goals: number; assists: number; yellowCards: number; redCards: number }[])
+            .find((s) => s.playerId === player.id);
+          setPlayerStats(found ? { goals: found.goals, assists: found.assists, yellowCards: found.yellowCards, redCards: found.redCards } : { goals: 0, assists: 0, yellowCards: 0, redCards: 0 });
+        }
       } catch {
         // silent
       } finally {
@@ -81,7 +102,7 @@ export default function PlayerDetailModal({
       }
     })();
     return () => { active = false; };
-  }, [player.id, teamId, token]);
+  }, [player.id, teamId, token, currentSeason]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -416,6 +437,33 @@ export default function PlayerDetailModal({
                     {savingJersey ? '...' : 'Uložit'}
                   </button>
                 </div>
+              </div>
+
+              {/* Season stats */}
+              <div className="mt-6">
+                <label className="block text-foreground/60 text-xs uppercase tracking-wider mb-2">
+                  Sezóna {currentSeason}
+                </label>
+                {playerStats ? (
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      { label: 'Góly', value: playerStats.goals, color: 'text-foreground' },
+                      { label: 'Asist.', value: playerStats.assists, color: 'text-foreground' },
+                      { label: '🟨', value: playerStats.yellowCards, color: playerStats.yellowCards > 0 ? 'text-yellow-400' : 'text-foreground' },
+                      { label: '🟥', value: playerStats.redCards, color: playerStats.redCards > 0 ? 'text-red-400' : 'text-foreground' },
+                      { label: 'Hodnocení', value: ratings.length > 0 ? (ratings.reduce((s, r) => s + r.avgScore, 0) / ratings.length).toFixed(1) : '—', color: 'text-blue-400' },
+                    ].map((stat) => (
+                      <div key={stat.label} className="flex flex-col items-center py-2.5 px-1 rounded-xl bg-surface border border-border">
+                        <span className={`text-lg font-bold ${stat.color}`}>{stat.value}</span>
+                        <span className="text-foreground/40 text-[10px] uppercase tracking-wider mt-0.5">{stat.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex justify-center py-3">
+                    <LoadingSpinner />
+                  </div>
+                )}
               </div>
 
               {/* Ratings section */}
