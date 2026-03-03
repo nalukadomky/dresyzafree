@@ -159,7 +159,7 @@ export function EventsSection({ content, events, primaryColor }: Props) {
               </motion.div>
             ))}
           </div>
-        ) : null}
+        )}
       </div>
     </section>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { FanVotingContent, LastMatchData } from '@/lib/db-website';
+import type { FanVotingContent } from '@/lib/db-website';
 
 interface Player {
   id: string;
@@ -16,9 +16,18 @@ interface VoteResult {
   voteCount: number;
 }
 
+interface MatchInfo {
+  id: string;
+  date: string;
+  opponent?: string;
+  goalsFor?: number;
+  goalsAgainst?: number;
+  startTime?: string;
+}
+
 interface Props {
   content: FanVotingContent;
-  lastMatch?: LastMatchData;
+  lastMatch?: MatchInfo;
   players: Player[];
   primaryColor: string;
   teamName?: string;
@@ -46,7 +55,7 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function getDeadline(lastMatch: LastMatchData): Date {
+function getDeadline(lastMatch: MatchInfo): Date {
   const base = lastMatch.startTime
     ? new Date(`${lastMatch.date}T${lastMatch.startTime}:00`)
     : new Date(`${lastMatch.date}T23:59:59`);

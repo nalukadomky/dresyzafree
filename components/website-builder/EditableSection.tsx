@@ -12,6 +12,7 @@ const SECTION_LABELS: Record<WebsiteSectionType, string> = {
   gallery: 'Galerie',
   textblock: 'Textové pole',
   'fan-voting': 'Hráč zápasu',
+  lastMatch: 'Poslední zápas',
 };
 
 const SECTION_ICONS: Record<WebsiteSectionType, string> = {
@@ -23,6 +24,7 @@ const SECTION_ICONS: Record<WebsiteSectionType, string> = {
   gallery: '🖼️',
   textblock: '📄',
   'fan-voting': '⭐',
+  lastMatch: '⚽',
 };
 
 interface Props {

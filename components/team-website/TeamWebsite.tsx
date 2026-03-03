@@ -91,7 +91,7 @@ export function TeamWebsite({ data, slug: slugProp }: Props) {
           <FanVotingSection
             key="fan-voting"
             content={section.content as FanVotingContent}
-            lastMatch={data.lastMatch}
+            lastMatch={data.lastMatch ?? undefined}
             players={players}
             primaryColor={website.primaryColor}
             teamName={team.teamName}
@@ -103,7 +103,7 @@ export function TeamWebsite({ data, slug: slugProp }: Props) {
           <LastMatchSection
             key="lastMatch"
             content={section.content as LastMatchContent}
-            lastMatch={lastMatch}
+            lastMatch={lastMatch ?? null}
             players={players}
             primaryColor={website.primaryColor}
             slug={slug}
