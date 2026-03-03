@@ -28,10 +28,10 @@ export function middleware(request: NextRequest) {
   // Get the first path segment (e.g. "/sokol-lustenice" → "sokol-lustenice")
   const firstSegment = pathname.split('/')[1];
 
-  // Skip reserved routes and static files
+  // Skip reserved routes and static files (check full path for extensions)
   if (
     RESERVED_PREFIXES.includes(firstSegment) ||
-    firstSegment.includes('.') // static files like .png, .js, .css
+    /\.\w+$/.test(pathname) // static files like .png, .js, .css (also in subdirs)
   ) {
     return NextResponse.next();
   }

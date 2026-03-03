@@ -25,6 +25,8 @@ interface Props {
   slug?: string;
 }
 
+const VOTING_WINDOW_MS = 48 * 60 * 60 * 1000; // 48 hours
+
 function getVoterId(): string {
   const KEY = 'mypitch_fan_id';
   let id = localStorage.getItem(KEY);
@@ -44,6 +46,22 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function getDeadline(lastMatch: LastMatchData): Date {
+  const base = lastMatch.startTime
+    ? new Date(`${lastMatch.date}T${lastMatch.startTime}:00`)
+    : new Date(`${lastMatch.date}T23:59:59`);
+  return new Date(base.getTime() + VOTING_WINDOW_MS);
+}
+
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return '';
+  const totalMinutes = Math.floor(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 export function FanVotingSection({ content, lastMatch, players, primaryColor, teamName, slug }: Props) {
   const isDark = content.variant === 'dark';
   const [voterId, setVoterId] = useState<string | null>(null);
@@ -52,8 +70,22 @@ export function FanVotingSection({ content, lastMatch, players, primaryColor, te
   const [submitting, setSubmitting] = useState(false);
   const [showPlayerList, setShowPlayerList] = useState(false);
   const [changing, setChanging] = useState(false);
+  const [pendingPlayer, setPendingPlayer] = useState<Player | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   const totalVotes = results.reduce((sum, r) => sum + r.voteCount, 0);
+  const votingOpen = timeLeft !== null && timeLeft > 0;
+
+  // Countdown timer
+  useEffect(() => {
+    if (!lastMatch) return;
+    const deadline = getDeadline(lastMatch);
+    const update = () => setTimeLeft(deadline.getTime() - Date.now());
+    update();
+    const interval = setInterval(update, 60000);
+    return () => clearInterval(interval);
+  }, [lastMatch]);
 
   const fetchState = useCallback(async (vid: string) => {
     if (!slug || !lastMatch) return;
@@ -89,12 +121,23 @@ export function FanVotingSection({ content, lastMatch, players, primaryColor, te
       setVotedFor(playerId);
       setShowPlayerList(false);
       setChanging(false);
+      setPendingPlayer(null);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
       await fetchState(voterId);
     } catch {
       // silent
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const onPlayerClick = (player: Player) => {
+    setPendingPlayer(player);
+  };
+
+  const confirmVote = () => {
+    if (pendingPlayer) handleVote(pendingPlayer.id);
   };
 
   // Colors
@@ -105,6 +148,7 @@ export function FanVotingSection({ content, lastMatch, players, primaryColor, te
   const textMuted = isDark ? '#64748B' : '#94A3B8';
   const borderColor = isDark ? '#334155' : '#E2E8F0';
   const bgHover = isDark ? '#0F172A' : '#F8FAFC';
+  const bgOverlay = isDark ? 'rgba(15,23,42,0.8)' : 'rgba(0,0,0,0.4)';
 
   // Determine UI state
   const hasVoted = !!votedFor && !changing;
@@ -187,8 +231,36 @@ export function FanVotingSection({ content, lastMatch, players, primaryColor, te
               {slug && players.length > 0 && voterId && (
                 <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${borderColor}` }}>
 
+                  {/* Success toast */}
+                  {showSuccess && (
+                    <div
+                      className="mb-4 px-4 py-3 rounded-xl text-sm font-medium text-center"
+                      style={{ background: '#22c55e20', color: '#22c55e', border: '1px solid #22c55e40' }}
+                    >
+                      ✓ Váš hlas byl odeslán!
+                    </div>
+                  )}
+
+                  {/* Countdown timer */}
+                  {timeLeft !== null && (
+                    <div className="text-center mb-4">
+                      {votingOpen ? (
+                        <p className="text-xs font-medium" style={{ color: textMuted }}>
+                          <svg className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Hlasování končí za <span style={{ color: primaryColor, fontWeight: 600 }}>{formatCountdown(timeLeft)}</span>
+                        </p>
+                      ) : (
+                        <p className="text-xs font-medium" style={{ color: textMuted }}>
+                          Hlasování ukončeno
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {/* State: Not voted yet, no player list open */}
-                  {!hasVoted && !showPicker && (
+                  {!hasVoted && !showPicker && votingOpen && (
                     <div className="text-center">
                       <p className="text-sm mb-4" style={{ color: textSecondary }}>
                         Kdo byl podle vás nejlepší hráč zápasu?
@@ -208,7 +280,7 @@ export function FanVotingSection({ content, lastMatch, players, primaryColor, te
                   )}
 
                   {/* State: Player list open for picking */}
-                  {showPicker && (
+                  {showPicker && votingOpen && (
                     <div>
                       <p className="text-sm mb-3 font-medium" style={{ color: textSecondary }}>
                         {changing ? 'Vyberte jiného hráče:' : 'Vyberte nejlepšího hráče:'}
@@ -218,7 +290,7 @@ export function FanVotingSection({ content, lastMatch, players, primaryColor, te
                           <button
                             key={player.id}
                             type="button"
-                            onClick={() => handleVote(player.id)}
+                            onClick={() => onPlayerClick(player)}
                             disabled={submitting}
                             className="w-full flex items-center gap-3 p-3 rounded-xl transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
                             style={{
@@ -263,7 +335,7 @@ export function FanVotingSection({ content, lastMatch, players, primaryColor, te
                       </div>
                       <button
                         type="button"
-                        onClick={() => { setShowPlayerList(false); setChanging(false); }}
+                        onClick={() => { setShowPlayerList(false); setChanging(false); setPendingPlayer(null); }}
                         className="mt-3 text-xs font-medium hover:underline"
                         style={{ color: textMuted }}
                       >
@@ -344,14 +416,16 @@ export function FanVotingSection({ content, lastMatch, players, primaryColor, te
                         <p className="text-xs" style={{ color: textMuted }}>
                           Celkem hlasů: {totalVotes}
                         </p>
-                        <button
-                          type="button"
-                          onClick={() => setChanging(true)}
-                          className="text-xs font-medium hover:underline"
-                          style={{ color: primaryColor }}
-                        >
-                          Změnit hlas
-                        </button>
+                        {votingOpen && (
+                          <button
+                            type="button"
+                            onClick={() => setChanging(true)}
+                            className="text-xs font-medium hover:underline"
+                            style={{ color: primaryColor }}
+                          >
+                            Změnit hlas
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -361,6 +435,65 @@ export function FanVotingSection({ content, lastMatch, players, primaryColor, te
           </>
         )}
       </div>
+
+      {/* Confirmation popup */}
+      {pendingPlayer && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: bgOverlay }}
+          onClick={() => setPendingPlayer(null)}
+        >
+          <div
+            className="rounded-2xl p-6 max-w-sm w-full shadow-xl"
+            style={{ background: bgCard, border: `1px solid ${borderColor}` }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center mb-5">
+              {pendingPlayer.photoUrl ? (
+                <div
+                  className="w-16 h-16 rounded-full bg-cover bg-center mx-auto mb-3"
+                  style={{
+                    backgroundImage: `url(${pendingPlayer.photoUrl})`,
+                    border: `3px solid ${primaryColor}`,
+                  }}
+                />
+              ) : (
+                <div
+                  className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 text-white font-bold text-xl"
+                  style={{ background: primaryColor }}
+                >
+                  {pendingPlayer.jerseyNumber ?? pendingPlayer.name.charAt(0)}
+                </div>
+              )}
+              <p className="text-base font-semibold" style={{ color: textPrimary }}>
+                Hlasovat pro {pendingPlayer.name}?
+              </p>
+              <p className="text-sm mt-1" style={{ color: textSecondary }}>
+                Chcete zvolit tohoto hráče jako hráče utkání?
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setPendingPlayer(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                style={{ background: isDark ? '#0F172A' : '#F1F5F9', color: textSecondary, border: `1px solid ${borderColor}` }}
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                onClick={confirmVote}
+                disabled={submitting}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                style={{ background: primaryColor }}
+              >
+                {submitting ? 'Odesílám...' : 'Potvrdit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

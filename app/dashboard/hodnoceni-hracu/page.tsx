@@ -1358,6 +1358,9 @@ function HodnoceniHracuContent() {
           setCreatedEventLink(`${base}/udalost/${data.event.shareToken}`);
           setTimeout(() => setCreatedEventLink(null), 15000);
         }
+        const savedDate = newEventDate;
+        const savedOpponent = newEventOpponent.trim();
+        const savedTime = time;
         setNewEventDate('');
         setNewEventStartTime('');
         setNewEventLocation('');
@@ -1367,6 +1370,27 @@ function HodnoceniHracuContent() {
         setNewEventType('training');
         await fetchEvents();
         await fetchAttendanceStats();
+
+        // Auto-create match when competitive_match event is created (if not duplicate)
+        if (resolvedEventType === 'competitive_match') {
+          const dupMatch = matches.find(
+            (m) => m.date === savedDate && (m.opponent || '').trim().toLowerCase() === savedOpponent.toLowerCase()
+          );
+          if (!dupMatch) {
+            try {
+              await fetch(`/api/teams/${teamId}/matches`, {
+                method: 'POST',
+                headers: headers(),
+                body: JSON.stringify({
+                  date: savedDate,
+                  opponent: savedOpponent || undefined,
+                  startTime: savedTime,
+                }),
+              });
+              await fetchMatches();
+            } catch { /* match creation is best-effort */ }
+          }
+        }
       } else {
         const d = await res.json();
         const err = d.error || 'Chyba';
@@ -1736,10 +1760,35 @@ function HodnoceniHracuContent() {
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
+        const savedDate = newMatchDate;
+        const savedOpponent = newMatchOpponent.trim();
+        const savedTime = time;
         setNewMatchDate('');
         setNewMatchStartTime('');
         setNewMatchOpponent('');
         await fetchMatches();
+
+        // Auto-create corresponding event (if not duplicate)
+        const dupEvent = events.find(
+          (e) => e.date === savedDate && e.eventType === 'competitive_match' && (e.opponent || '').trim().toLowerCase() === savedOpponent.toLowerCase()
+        );
+        if (!dupEvent) {
+          try {
+            await fetch(`/api/teams/${teamId}/events`, {
+              method: 'POST',
+              headers: headers(),
+              body: JSON.stringify({
+                date: savedDate,
+                eventType: 'competitive_match',
+                location: savedOpponent || 'Zápas',
+                opponent: savedOpponent || undefined,
+                startTime: savedTime,
+                note: 'Automaticky vytvořeno ze zápasu',
+              }),
+            });
+            await fetchEvents();
+          } catch { /* event creation is best-effort */ }
+        }
       } else {
         let msg = d.error || `Chyba (${res.status})`;
         if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('tabulk')) {
@@ -1813,7 +1862,11 @@ function HodnoceniHracuContent() {
       const existing = new Set(
         matches.map((m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`)
       );
+      const existingEvs = new Set(
+        events.map((e) => `${e.date}|${(e.startTime || '').trim()}|${(e.opponent || '').trim().toLowerCase()}`)
+      );
       let created = 0;
+      let eventsCreated = 0;
       let skipped = 0;
       let failed = 0;
       const createdKeys: string[] = [];
@@ -1837,12 +1890,33 @@ function HodnoceniHracuContent() {
           created += 1;
           existing.add(key);
           createdKeys.push(key);
+
+          // Auto-create corresponding event
+          if (!existingEvs.has(key)) {
+            const evRes = await fetch(`/api/teams/${teamId}/events`, {
+              method: 'POST',
+              headers: headers(),
+              body: JSON.stringify({
+                date: candidate.date,
+                startTime: candidate.startTime,
+                eventType: 'competitive_match',
+                location: candidate.opponent || 'Zápas',
+                opponent: candidate.opponent || undefined,
+                note: 'Import z ICS kalendáře',
+              }),
+            });
+            if (evRes.ok) {
+              eventsCreated += 1;
+              existingEvs.add(key);
+            }
+          }
         } else {
           failed += 1;
         }
       }
 
       const latestMatches = await fetchMatches();
+      await fetchEvents();
       if (importAnimationTimeoutRef.current) {
         clearTimeout(importAnimationTimeoutRef.current);
       }
@@ -1857,7 +1931,7 @@ function HodnoceniHracuContent() {
       }
       resetIcsImportSession({ keepFeedback: true });
       setImportSource('none');
-      setIcsFeedback(`success:Import hotov. Přidáno: ${created}, přeskočeno (duplicitní): ${skipped}, chyby: ${failed}.`);
+      setIcsFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, přeskočeno (duplicitní): ${skipped}, chyby: ${failed}.`);
     } finally {
       setIcsImporting(false);
     }
@@ -3848,7 +3922,12 @@ function HodnoceniHracuContent() {
                 };
                 const EventList = ({ evs }: { evs: Event[] }) => (
                   <ul className="space-y-2">
-                    {evs.map((ev) => (
+                    {evs.map((ev) => {
+                      const matchedMatch = ev.eventType === 'competitive_match'
+                        ? matches.find((m) => m.date === ev.date && (m.opponent || '').trim().toLowerCase() === (ev.opponent || '').trim().toLowerCase())
+                        : null;
+                      const hasScore = matchedMatch && (matchedMatch.goalsFor != null || matchedMatch.goalsAgainst != null);
+                      return (
                       <li key={ev.id} className="flex justify-between items-center py-2 px-3 rounded-lg hover:bg-surface border border-border gap-2">
                         <button
                           type="button"
@@ -3858,6 +3937,9 @@ function HodnoceniHracuContent() {
                           <div className="text-foreground">
                             <div className="font-medium truncate" title={`${formatEventDateTime(ev.date, ev.startTime)} – ${EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}`}>
                               {formatEventDateTime(ev.date, ev.startTime)} – {EVENT_TYPE_LABELS[ev.eventType] || ev.eventType}
+                              {hasScore && (
+                                <span className="ml-2 text-green-500 font-bold">{matchedMatch.goalsFor ?? 0} : {matchedMatch.goalsAgainst ?? 0}</span>
+                              )}
                             </div>
                             {ev.location && (
                               <a
@@ -3882,6 +3964,16 @@ function HodnoceniHracuContent() {
                           </div>
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
+                          {matchedMatch && (
+                            <button
+                              type="button"
+                              onClick={() => setMatchPopup(matchedMatch)}
+                              className="text-green-500 hover:text-green-400 text-sm px-2 py-1 font-medium"
+                              title={hasScore ? 'Upravit skóre zápasu' : 'Zapsat skóre zápasu'}
+                            >
+                              {hasScore ? 'Upravit skóre' : 'Zapsat skóre'}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => openUcastModal(ev)}
@@ -3913,7 +4005,8 @@ function HodnoceniHracuContent() {
                           </button>
                         </div>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 );
 
