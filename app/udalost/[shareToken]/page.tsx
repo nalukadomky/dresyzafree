@@ -49,6 +49,7 @@ export default function UdalostPage() {
   const [absenceReason, setAbsenceReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     if (!shareToken) return;
@@ -197,6 +198,16 @@ export default function UdalostPage() {
                 className="mt-4 px-4 py-2 text-foreground/80 hover:text-foreground text-sm underline"
               >
                 Změnit odpověď
+              </button>
+            </div>
+          ) : !showForm ? (
+            <div className="text-center py-8">
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="liquid-glass-btn inline-flex items-center gap-2 px-8 py-4 rounded-2xl text-base font-semibold"
+              >
+                Potvrdit účast
               </button>
             </div>
           ) : (

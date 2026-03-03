@@ -8,7 +8,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import TacticsBoard from '@/components/TacticsBoard';
 import ThemeToggle from '@/components/ThemeToggle';
 import { MotionPage } from '@/components/Motion';
-import { Reorder, useDragControls } from 'framer-motion';
+import { Reorder, useDragControls, motion } from 'framer-motion';
 import {
   Select,
   SelectContent,
@@ -1578,6 +1578,9 @@ function HodnoceniHracuContent() {
                             ? `${teamName || 'Náš tým'} ${lastMatch.goalsFor} : ${lastMatch.goalsAgainst} ${lastMatch.opponent || 'Soupeř'}`
                             : lastMatch.result || '—';
                         const pom = lastMatch.playerOfMatch;
+                        const nextEvent = events
+                          .filter(e => e.date >= new Date().toISOString().slice(0, 10) && e.shareToken)
+                          .sort((a, b) => a.date.localeCompare(b.date))[0];
                         return (
                           <SortableOverviewCard
                             key={layoutItem.id}
@@ -1597,6 +1600,14 @@ function HodnoceniHracuContent() {
                                   <p className="text-amber-400 font-medium flex items-center gap-1.5 mt-2">
                                     <span aria-hidden>⭐</span> Hráč utkání: {pom.playerName}
                                   </p>
+                                )}
+                                {nextEvent && (
+                                  <a
+                                    href={`/udalost/${nextEvent.shareToken}`}
+                                    className="liquid-glass-btn relative z-10 inline-flex items-center gap-2 mt-4 px-5 py-2.5 rounded-2xl text-sm font-semibold no-underline"
+                                  >
+                                    Potvrdit účast
+                                  </a>
                                 )}
                               </div>
 
@@ -1749,9 +1760,11 @@ function HodnoceniHracuContent() {
                                             <span className="text-[#1f3768] dark:text-accent font-semibold">{formScore} %</span>
                                           </div>
                                           <div className="h-3 rounded-full bg-surface-hover overflow-hidden">
-                                            <div
-                                              className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full transition-all"
-                                              style={{ width: `${Math.min(100, formScore)}%` }}
+                                            <motion.div
+                                              className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full"
+                                              initial={{ width: 0 }}
+                                              animate={{ width: `${Math.min(100, formScore)}%` }}
+                                              transition={{ duration: 0.8, ease: "easeOut" }}
                                             />
                                           </div>
                                         </div>
@@ -1775,7 +1788,7 @@ function HodnoceniHracuContent() {
                                             const fb = (b.attendancePct / 100) * 50 + (b.avgMatchScore / 10) * 50;
                                             return fb - fa;
                                           })
-                                          .map((s) => {
+                                          .map((s, index) => {
                                             const formPct = Math.round((s.attendancePct / 100) * 50 + (s.avgMatchScore / 10) * 50);
                                             return (
                                               <div key={s.playerId} className="space-y-1">
@@ -1786,9 +1799,11 @@ function HodnoceniHracuContent() {
                                                   </span>
                                                 </div>
                                                 <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
-                                                  <div
-                                                    className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full transition-all"
-                                                    style={{ width: `${Math.min(100, formPct)}%` }}
+                                                  <motion.div
+                                                    className="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-lime-400 rounded-full"
+                                                    initial={{ width: 0 }}
+                                                    animate={{ width: `${Math.min(100, formPct)}%` }}
+                                                    transition={{ duration: 0.8, ease: "easeOut", delay: index * 0.05 }}
                                                   />
                                                 </div>
                                               </div>
