@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbWebsite } from '@/lib/db-website';
 import { dbFanVotes } from '@/lib/db-fan-votes';
+import { supabaseAdmin } from '@/lib/supabase-server';
+import { supabase } from '@/lib/supabase';
+
+const VOTING_WINDOW_MS = 48 * 60 * 60 * 1000; // 48 hours
 
 export async function POST(
   request: NextRequest,
@@ -19,6 +23,27 @@ export async function POST(
 
     if (typeof voterIdentifier !== 'string' || voterIdentifier.length < 8 || voterIdentifier.length > 128) {
       return NextResponse.json({ error: 'Neplatný identifikátor' }, { status: 400 });
+    }
+
+    // Server-side 48h voting window validation
+    const client = supabaseAdmin ?? supabase;
+    const { data: match } = await client!
+      .from('matches')
+      .select('date, start_time')
+      .eq('id', matchId)
+      .single();
+
+    if (match) {
+      const base = match.start_time
+        ? new Date(`${match.date}T${match.start_time}:00`)
+        : new Date(`${match.date}T23:59:59`);
+      const deadline = new Date(base.getTime() + VOTING_WINDOW_MS);
+      if (Date.now() > deadline.getTime()) {
+        return NextResponse.json(
+          { error: 'Hlasování pro tento zápas již skončilo' },
+          { status: 403 }
+        );
+      }
     }
 
     await dbFanVotes.submit(matchId, playerId, voterIdentifier);

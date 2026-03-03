@@ -335,7 +335,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="space-y-4">
-          {/* Týmová zóna + Týmový web — dvě karty vedle sebe */}
+          {/* Týmová zóna + Týmový web + Fanoušci — karty */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <MotionItem delay={0.02}>
               <Link href="/dashboard/hodnoceni-hracu" className="block h-full">
@@ -422,6 +422,34 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
+            </MotionItem>
+
+            {/* Fanoušci */}
+            <MotionItem delay={0.06} className="sm:col-span-2">
+              <Link href="/dashboard/fanousci" className="block">
+                <motion.div
+                  className="relative overflow-hidden rounded-2xl p-6 sm:p-8 group cursor-pointer"
+                  style={{
+                    background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 40%, #F97316 100%)',
+                  }}
+                  whileHover={{ y: -2 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                >
+                  <div className="flex items-center justify-between relative z-10">
+                    <div>
+                      <h2 className="text-2xl sm:text-3xl font-black text-white leading-tight tracking-tight mb-1">
+                        Fanoušci
+                      </h2>
+                      <p className="text-white/70 text-sm">
+                        Hlasování fanoušků o hráče utkání
+                      </p>
+                    </div>
+                    <svg className="w-5 h-5 text-white/40 group-hover:text-white/70 group-hover:translate-x-1 transition-all shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </motion.div>
+              </Link>
             </MotionItem>
           </div>
 
