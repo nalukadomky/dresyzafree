@@ -233,3 +233,18 @@ CREATE INDEX IF NOT EXISTS idx_fan_votes_player ON fan_votes(player_id);
 ALTER TABLE fan_votes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all for fan_votes" ON fan_votes;
 CREATE POLICY "Allow all for fan_votes" ON fan_votes FOR ALL USING (true) WITH CHECK (true);
+
+-- match cards (yellow / red)
+CREATE TABLE IF NOT EXISTS match_cards (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  card_type TEXT NOT NULL CHECK (card_type IN ('yellow', 'red')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_match_cards_match ON match_cards(match_id);
+
+ALTER TABLE match_cards ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all for match_cards" ON match_cards;
+CREATE POLICY "Allow all for match_cards" ON match_cards FOR ALL USING (true) WITH CHECK (true);
