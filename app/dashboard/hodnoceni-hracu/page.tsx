@@ -654,6 +654,7 @@ function MatchResultPopup({
   const [scorers, setScorers] = useState<{ goalOrder: number; playerId: string }[]>([]);
   const [assists, setAssists] = useState<{ assistOrder: number; playerId: string }[]>([]);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [loaded, setLoaded] = useState(false);
 
   const gfCount = (() => { const n = parseInt(goalsFor, 10); return !isNaN(n) && n >= 0 ? n : 0; })();
@@ -695,17 +696,23 @@ function MatchResultPopup({
 
   const save = async () => {
     setSaving(true);
+    setSaveError('');
     try {
       const body: Record<string, unknown> = { matchRating };
       const gf = goalsFor !== '' ? parseInt(goalsFor, 10) : undefined;
       const ga = goalsAgainst !== '' ? parseInt(goalsAgainst, 10) : undefined;
       if (gf != null && !isNaN(gf)) body.goalsFor = gf;
       if (ga != null && !isNaN(ga)) body.goalsAgainst = ga;
-      await fetch(`/api/teams/${teamId}/matches/${match.id}`, {
+      const res = await fetch(`/api/teams/${teamId}/matches/${match.id}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSaveError(d.error || 'Chyba při ukládání skóre');
+        return;
+      }
       if (gfCount > 0) {
         await fetch(`/api/teams/${teamId}/matches/${match.id}/scorers`, {
           method: 'PATCH',
@@ -718,6 +725,8 @@ function MatchResultPopup({
       }
       onSaved();
       onClose();
+    } catch {
+      setSaveError('Chyba při komunikaci se serverem');
     } finally {
       setSaving(false);
     }
@@ -823,6 +832,9 @@ function MatchResultPopup({
           </div>
 
           {/* Save */}
+          {saveError && (
+            <p className="text-red-400 text-sm text-center mb-2">{saveError}</p>
+          )}
           <button
             onClick={save} disabled={saving}
             className="w-full py-3 rounded-xl bg-[#86EF42] hover:bg-[#65d630] disabled:opacity-50 text-black font-semibold text-sm transition-colors"
@@ -2297,7 +2309,12 @@ function HodnoceniHracuContent() {
   };
 
   const deleteMatch = async (matchId: string) => {
-    const ok = await confirm({ message: 'Opravdu smazat zápas?', variant: 'danger' });
+    const matchToDelete = matches.find(m => m.id === matchId);
+    const hasScore = matchToDelete && matchToDelete.goalsFor != null && matchToDelete.goalsAgainst != null;
+    const message = hasScore
+      ? 'Tento zápas má zadané skóre. Smazáním se odstraní i propsané body do žebříčku hráčů. Opravdu smazat?'
+      : 'Opravdu smazat zápas?';
+    const ok = await confirm({ message, variant: 'danger' });
     if (!ok) return;
     const res = await fetch(`/api/teams/${teamId}/matches/${matchId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
@@ -2651,20 +2668,47 @@ function HodnoceniHracuContent() {
               >
                     {visibleOverview.map((layoutItem) => {
                       if (layoutItem.id === 'lastMatch') {
-                        const today = new Date().toISOString().slice(0, 10);
-                        const pastMatches = matches.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date));
-                        const lastMatch = pastMatches[0];
-                        const nextMatch = matches.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0];
-                        if (!lastMatch && !nextMatch) return null;
-                        const scoreStr = lastMatch
-                          ? (lastMatch.goalsFor != null && lastMatch.goalsAgainst != null
-                            ? `${teamName || 'Náš tým'} ${lastMatch.goalsFor} : ${lastMatch.goalsAgainst} ${lastMatch.opponent || 'Soupeř'}`
-                            : lastMatch.result || '—')
+                        const now = new Date();
+                        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+                        // Zápasy naplánované na dnes
+                        const todayMatches = matches
+                          .filter((m) => m.date === today)
+                          .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+
+                        // Preferuj zápas, který už začal (aktuálnější stav)
+                        const todayMatch = todayMatches.find((m) => isMatchPlayed(m.date, m.startTime)) || todayMatches[0] || null;
+                        const todayMatchStarted = todayMatch ? isMatchPlayed(todayMatch.date, todayMatch.startTime) : false;
+                        const todayMatchNeedsScore = todayMatchStarted && todayMatch!.goalsFor == null;
+
+                        // Poslední zápas — jen pokud NENÍ dnešní zápas
+                        const lastMatch = !todayMatch
+                          ? matches.filter((m) => m.date < today).sort((a, b) => b.date.localeCompare(a.date))[0]
+                          : undefined;
+
+                        // "Levá strana" karty = dnešní zápas nebo poslední zápas
+                        const leftMatch = todayMatch || lastMatch;
+
+                        // Příští zápas — nejbližší budoucí, přeskočí dnešní featured zápas
+                        const nextMatch = matches
+                          .filter((m) => {
+                            if (todayMatch && m.id === todayMatch.id) return false;
+                            return m.date > today || (m.date === today && !isMatchPlayed(m.date, m.startTime));
+                          })
+                          .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''))[0];
+
+                        if (!leftMatch && !nextMatch) return null;
+
+                        const scoreStr = leftMatch
+                          ? (leftMatch.goalsFor != null && leftMatch.goalsAgainst != null
+                            ? `${teamName || 'Náš tým'} ${leftMatch.goalsFor} : ${leftMatch.goalsAgainst} ${leftMatch.opponent || 'Soupeř'}`
+                            : leftMatch.result || '—')
                           : '';
-                        const pom = lastMatch?.playerOfMatch;
+                        const pom = leftMatch?.playerOfMatch;
                         const nextEvent = events
-                          .filter(e => e.date >= new Date().toISOString().slice(0, 10) && e.shareToken)
+                          .filter(e => e.date >= today && e.shareToken)
                           .sort((a, b) => a.date.localeCompare(b.date))[0];
+
                         return (
                           <SortableOverviewCard
                             key={layoutItem.id}
@@ -2673,40 +2717,85 @@ function HodnoceniHracuContent() {
                             onToggleVisibility={handleOverviewToggleVisibility}
                             onSizeChange={handleOverviewSizeChange}
                           >
-                            <div className="glass-card group relative overflow-visible rounded-2xl p-4 sm:p-6 lg:pr-44 xl:pr-56 border border-amber-500/30 bg-amber-500/5">
-                              <div className="relative z-10 flex flex-wrap items-start gap-x-6 gap-y-2">
-                                {lastMatch && (
-                                  <div className="space-y-1">
-                                    <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 sm:mb-3">Poslední zápas</h2>
-                                    <p className="text-foreground font-medium">
-                                      {formatEventDateTime(lastMatch.date, lastMatch.startTime)} vs {lastMatch.opponent || 'soupeř'}
-                                    </p>
-                                    <p className="text-[#1f3768] dark:text-accent font-semibold text-lg">{scoreStr}</p>
-                                    {pom && (
-                                      <p className="text-amber-400 font-medium flex items-center gap-1.5 mt-2">
-                                        <span aria-hidden>⭐</span> Hráč utkání: {pom.playerName}
-                                      </p>
-                                    )}
-                                  </div>
-                                )}
-                                {nextMatch && (
-                                  <div className={`space-y-1 ${lastMatch ? 'border-l-2 border-white/25 pl-6' : ''}`}>
-                                    <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2 sm:mb-3">Příští zápas</h2>
-                                    <p className="text-foreground font-medium">
-                                      {formatEventDateTime(nextMatch.date, nextMatch.startTime)} vs {nextMatch.opponent || 'soupeř'}
-                                    </p>
-                                  </div>
-                                )}
-                                {nextEvent && (
-                                  <a
-                                    href={`/udalost/${nextEvent.shareToken}`}
-                                    className="liquid-glass-btn relative z-10 inline-flex items-center gap-2 mt-4 px-5 py-2.5 rounded-2xl text-sm font-semibold no-underline"
+                            <div className="glass-card group relative overflow-visible rounded-2xl p-4 sm:p-5 lg:pr-44 xl:pr-56 border border-amber-500/30 bg-amber-500/5">
+                              <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {/* Levý sloupec — Dnešní/Poslední zápas */}
+                                {leftMatch && (
+                                  <motion.div
+                                    className="rounded-xl bg-white/[0.04] p-4 flex items-center justify-between gap-4"
+                                    initial={{ opacity: 0, y: 12 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.4, ease: 'easeOut' }}
                                   >
-                                    Potvrdit účast
-                                  </a>
+                                    <div className="min-w-0">
+                                      <p className="text-[11px] tracking-widest text-foreground/45 font-semibold uppercase mb-2">
+                                        {todayMatch ? 'Dnešní zápas' : 'Poslední zápas'}
+                                      </p>
+                                      <p className="text-lg font-bold text-foreground leading-tight truncate">
+                                        vs {leftMatch.opponent || 'soupeř'}
+                                      </p>
+                                      <p className="text-sm text-foreground/45 mt-0.5">
+                                        {formatEventDateTime(leftMatch.date, leftMatch.startTime)}
+                                      </p>
+                                      {pom && (
+                                        <p className="text-amber-400 text-sm font-medium flex items-center gap-1.5 mt-1">
+                                          <span>⭐</span> {pom.playerName}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="shrink-0">
+                                      {todayMatch && todayMatchNeedsScore ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setMatchPopup(todayMatch)}
+                                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-dark text-black text-sm font-bold shadow-lg shadow-accent/20 hover:shadow-accent/30 transition-all"
+                                        >
+                                          Doplnit skóre
+                                        </button>
+                                      ) : leftMatch.goalsFor != null && leftMatch.goalsAgainst != null ? (
+                                        <p className="text-3xl font-black dark:text-accent text-[#1f3768] tabular-nums">
+                                          {leftMatch.goalsFor} : {leftMatch.goalsAgainst}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  </motion.div>
+                                )}
+
+                                {/* Pravý sloupec — Příští zápas */}
+                                {nextMatch && (
+                                  <motion.div
+                                    className="rounded-xl bg-white/[0.04] p-4 flex items-center justify-between gap-4"
+                                    initial={{ opacity: 0, y: 12 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.4, delay: 0.08, ease: 'easeOut' }}
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-[11px] tracking-widest text-foreground/45 font-semibold uppercase mb-2">
+                                        Příští zápas
+                                      </p>
+                                      <p className="text-lg font-bold text-foreground leading-tight truncate">
+                                        vs {nextMatch.opponent || 'soupeř'}
+                                      </p>
+                                      <p className="text-sm text-foreground/45 mt-0.5">
+                                        {formatEventDateTime(nextMatch.date, nextMatch.startTime)}
+                                      </p>
+                                    </div>
+                                    {nextEvent && (
+                                      <a
+                                        href={`/udalost/${nextEvent.shareToken}`}
+                                        className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-dark text-black text-sm font-bold shadow-lg shadow-accent/20 hover:shadow-accent/30 transition-all no-underline"
+                                      >
+                                        Potvrdit účast
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                                        </svg>
+                                      </a>
+                                    )}
+                                  </motion.div>
                                 )}
                               </div>
 
+                              {/* Player image */}
                               <div className="hidden lg:block absolute right-[-24px] bottom-0 w-[220px] xl:w-[250px] h-[185px] xl:h-[205px] overflow-hidden pointer-events-none z-20">
                                 <img
                                   src="/images/player_image.png"
