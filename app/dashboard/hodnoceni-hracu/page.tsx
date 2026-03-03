@@ -2717,28 +2717,28 @@ function HodnoceniHracuContent() {
                             onToggleVisibility={handleOverviewToggleVisibility}
                             onSizeChange={handleOverviewSizeChange}
                           >
-                            <div className="glass-card group relative overflow-visible rounded-2xl p-4 sm:p-5 lg:pr-44 xl:pr-56 border border-amber-500/30 bg-amber-500/5">
-                              <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="group relative overflow-visible rounded-2xl p-4 sm:p-5 lg:pr-44 xl:pr-56 bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-500">
+                              <div className="relative z-10 flex flex-col sm:flex-row sm:items-stretch">
                                 {/* Levý sloupec — Dnešní/Poslední zápas */}
                                 {leftMatch && (
                                   <motion.div
-                                    className="rounded-xl bg-white/[0.04] p-4 flex items-center justify-between gap-4"
+                                    className="flex-1 p-1 sm:p-2 flex items-center justify-between gap-4"
                                     initial={{ opacity: 0, y: 12 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.4, ease: 'easeOut' }}
                                   >
                                     <div className="min-w-0">
-                                      <p className="text-[11px] tracking-widest text-foreground/45 font-semibold uppercase mb-2">
+                                      <p className="text-[11px] tracking-widest text-white/50 font-semibold uppercase mb-2">
                                         {todayMatch ? 'Dnešní zápas' : 'Poslední zápas'}
                                       </p>
-                                      <p className="text-lg font-bold text-foreground leading-tight truncate">
+                                      <p className="text-lg font-bold text-white leading-tight truncate">
                                         vs {leftMatch.opponent || 'soupeř'}
                                       </p>
-                                      <p className="text-sm text-foreground/45 mt-0.5">
+                                      <p className="text-sm text-white/60 mt-0.5">
                                         {formatEventDateTime(leftMatch.date, leftMatch.startTime)}
                                       </p>
                                       {pom && (
-                                        <p className="text-amber-400 text-sm font-medium flex items-center gap-1.5 mt-1">
+                                        <p className="text-amber-300 text-sm font-medium flex items-center gap-1.5 mt-1">
                                           <span>⭐</span> {pom.playerName}
                                         </p>
                                       )}
@@ -2753,7 +2753,7 @@ function HodnoceniHracuContent() {
                                           Doplnit skóre
                                         </button>
                                       ) : leftMatch.goalsFor != null && leftMatch.goalsAgainst != null ? (
-                                        <p className="text-3xl font-black dark:text-accent text-[#1f3768] tabular-nums">
+                                        <p className="text-3xl font-black text-accent tabular-nums">
                                           {leftMatch.goalsFor} : {leftMatch.goalsAgainst}
                                         </p>
                                       ) : null}
@@ -2761,22 +2761,30 @@ function HodnoceniHracuContent() {
                                   </motion.div>
                                 )}
 
+                                {/* Oddělovač */}
+                                {leftMatch && nextMatch && (
+                                  <div className="hidden sm:block w-px self-stretch bg-white/25 mx-1" />
+                                )}
+                                {leftMatch && nextMatch && (
+                                  <div className="sm:hidden h-px w-full bg-white/25 my-2" />
+                                )}
+
                                 {/* Pravý sloupec — Příští zápas */}
                                 {nextMatch && (
                                   <motion.div
-                                    className="rounded-xl bg-white/[0.04] p-4 flex items-center justify-between gap-4"
+                                    className="flex-1 p-1 sm:p-2 flex items-center justify-between gap-4"
                                     initial={{ opacity: 0, y: 12 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.4, delay: 0.08, ease: 'easeOut' }}
                                   >
                                     <div className="min-w-0">
-                                      <p className="text-[11px] tracking-widest text-foreground/45 font-semibold uppercase mb-2">
+                                      <p className="text-[11px] tracking-widest text-white/50 font-semibold uppercase mb-2">
                                         Příští zápas
                                       </p>
-                                      <p className="text-lg font-bold text-foreground leading-tight truncate">
+                                      <p className="text-lg font-bold text-white leading-tight truncate">
                                         vs {nextMatch.opponent || 'soupeř'}
                                       </p>
-                                      <p className="text-sm text-foreground/45 mt-0.5">
+                                      <p className="text-sm text-white/60 mt-0.5">
                                         {formatEventDateTime(nextMatch.date, nextMatch.startTime)}
                                       </p>
                                     </div>
