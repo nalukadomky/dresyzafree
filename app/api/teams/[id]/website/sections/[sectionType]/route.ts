@@ -4,7 +4,7 @@ import { dbWebsite, type WebsiteSectionType } from '@/lib/db-website';
 
 export const dynamic = 'force-dynamic';
 
-const VALID_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock'];
+const VALID_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock', 'lastMatch'];
 
 // GET — fetch a single section
 export async function GET(

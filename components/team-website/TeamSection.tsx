@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useRef } from 'react';
+import { motion, AnimatePresence, useInView } from 'framer-motion';
 import type { TeamMembersContent, TeamMember } from '@/lib/db-website';
 
 interface Props {
@@ -227,6 +227,8 @@ function GalleryView({ members, primaryColor, isDark }: {
 export function TeamSection({ content, players, primaryColor }: Props) {
   const isDark = content.variant === 'dark';
   const viewMode = content.viewMode || 'grid';
+  const sectionRef = useRef<HTMLElement>(null);
+  const isInView = useInView(sectionRef, { once: true, amount: 0.15 });
 
   // Merge roster players + manual members
   const allMembers: TeamMember[] = [];
@@ -258,32 +260,39 @@ export function TeamSection({ content, players, primaryColor }: Props) {
 
   return (
     <section
+      ref={sectionRef}
       className="py-16 px-6"
       style={{
         background: isDark ? '#0F172A' : undefined,
       }}
     >
       <div className="max-w-5xl mx-auto">
-        <h2
+        <motion.h2
           className="text-3xl font-bold mb-2 text-center"
           style={{ color: isDark ? '#F8FAFC' : '#1E293B' }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
         >
           {content.title || 'Náš tým'}
-        </h2>
+        </motion.h2>
         {content.description && (
-          <p
+          <motion.p
             className="text-center mb-10 max-w-xl mx-auto"
             style={{ color: isDark ? '#94A3B8' : '#64748B' }}
+            initial={{ opacity: 0, y: 15 }}
+            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 15 }}
+            transition={{ duration: 0.5, delay: 0.1, ease: 'easeOut' }}
           >
             {content.description}
-          </p>
+          </motion.p>
         )}
 
         {viewMode === 'gallery' ? (
           <GalleryView members={allMembers} primaryColor={primaryColor} isDark={isDark} />
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
-            {allMembers.map((member) => {
+            {allMembers.map((member, idx) => {
               const initials = member.name
                 .split(' ')
                 .map((w) => w[0])
@@ -292,13 +301,17 @@ export function TeamSection({ content, players, primaryColor }: Props) {
                 .slice(0, 2);
 
               return (
-                <div
+                <motion.div
                   key={member.id}
-                  className="text-center rounded-2xl p-4 transition-transform hover:scale-[1.02]"
+                  className="text-center rounded-2xl p-4"
                   style={{
                     background: isDark ? '#1E293B' : `${primaryColor}08`,
                     border: isDark ? '1px solid #334155' : `1px solid ${primaryColor}15`,
                   }}
+                  initial={{ opacity: 0, y: 25 }}
+                  animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 25 }}
+                  transition={{ duration: 0.4, delay: 0.15 + idx * 0.05, ease: 'easeOut' }}
+                  whileHover={{ scale: 1.03, transition: { duration: 0.2 } }}
                 >
                   {/* Avatar */}
                   <div className="relative mx-auto mb-3">
@@ -353,7 +366,7 @@ export function TeamSection({ content, players, primaryColor }: Props) {
                   <div className="flex items-center justify-center">
                     <ContactIcons member={member} primaryColor={primaryColor} />
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>

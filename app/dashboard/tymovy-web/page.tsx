@@ -16,6 +16,7 @@ import type {
   AboutContent,
   GalleryContent,
   TextBlockContent,
+  LastMatchContent,
 } from '@/lib/db-website';
 import { generateSlug, DEFAULT_SECTION_CONTENT } from '@/lib/db-website';
 import { EditableSection } from '@/components/website-builder/EditableSection';
@@ -27,6 +28,7 @@ import { ContactEditor } from '@/components/website-builder/ContactEditor';
 import { AboutEditor } from '@/components/website-builder/AboutEditor';
 import { GalleryEditor } from '@/components/website-builder/GalleryEditor';
 import { TextBlockEditor } from '@/components/website-builder/TextBlockEditor';
+import { LastMatchEditor } from '@/components/website-builder/LastMatchEditor';
 import { HeroSection } from '@/components/team-website/HeroSection';
 import { TeamSection } from '@/components/team-website/TeamSection';
 import { EventsSection } from '@/components/team-website/EventsSection';
@@ -34,6 +36,7 @@ import { ContactSection } from '@/components/team-website/ContactSection';
 import { AboutSection } from '@/components/team-website/AboutSection';
 import { GallerySection } from '@/components/team-website/GallerySection';
 import { TextBlockSection } from '@/components/team-website/TextBlockSection';
+import { LastMatchSection } from '@/components/team-website/LastMatchSection';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -61,7 +64,7 @@ interface PlayerData {
   photoUrl?: string;
 }
 
-const ALL_SECTION_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock'];
+const ALL_SECTION_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock', 'lastMatch'];
 
 const SECTION_LABELS: Record<WebsiteSectionType, string> = {
   hero: 'Úvod',
@@ -71,6 +74,7 @@ const SECTION_LABELS: Record<WebsiteSectionType, string> = {
   about: 'O nás',
   gallery: 'Galerie',
   textblock: 'Textové pole',
+  lastMatch: 'Poslední zápas',
 };
 
 const SECTION_ICONS: Record<WebsiteSectionType, string> = {
@@ -81,6 +85,7 @@ const SECTION_ICONS: Record<WebsiteSectionType, string> = {
   about: '📝',
   gallery: '🖼️',
   textblock: '📄',
+  lastMatch: '⚽',
 };
 
 const SECTION_DESCRIPTIONS: Record<WebsiteSectionType, string> = {
@@ -91,6 +96,7 @@ const SECTION_DESCRIPTIONS: Record<WebsiteSectionType, string> = {
   about: 'Sekce s textem o vašem týmu, historii a hodnotách',
   gallery: 'Fotogalerie s lightboxem a volitelným popiskem',
   textblock: 'Volný textový blok s nastavením řádkování a mezer',
+  lastMatch: 'Výsledek posledního zápasu s hlasováním o hráče utkání',
 };
 
 const DEFAULTS: Record<WebsiteSectionType, unknown> = {
@@ -101,6 +107,7 @@ const DEFAULTS: Record<WebsiteSectionType, unknown> = {
   about: DEFAULT_SECTION_CONTENT.about,
   gallery: DEFAULT_SECTION_CONTENT.gallery,
   textblock: DEFAULT_SECTION_CONTENT.textblock,
+  lastMatch: { title: 'Poslední zápas', showScorers: true, showVoting: true, variant: 'light' },
 };
 
 // ── Templates ─────────────────────────────────────────────────────────
@@ -476,6 +483,16 @@ export default function TeamWebBuilder() {
             primaryColor={primaryColor}
           />
         );
+      case 'lastMatch':
+        return (
+          <LastMatchSection
+            content={getSectionContent('lastMatch') as LastMatchContent}
+            lastMatch={null}
+            players={players}
+            primaryColor={primaryColor}
+            isPreview={true}
+          />
+        );
       default:
         return null;
     }
@@ -555,6 +572,13 @@ export default function TeamWebBuilder() {
           <TextBlockEditor
             content={getSectionContent('textblock') as TextBlockContent}
             onChange={(c) => updateSectionContent('textblock', c)}
+          />
+        );
+      case 'lastMatch':
+        return (
+          <LastMatchEditor
+            content={getSectionContent('lastMatch') as LastMatchContent}
+            onChange={(c) => updateSectionContent('lastMatch', c)}
           />
         );
       default:
