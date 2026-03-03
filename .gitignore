@@ -6,4 +6,8 @@ node_modules
 .vercel
 .claude/
 .playwright-mcp/
-*.png
+# Screenshoty v rootu
+/dashboard-screenshot.png
+/feedback-default.png
+/feedback-pill-default.png
+/feedback-widget.png
