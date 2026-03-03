@@ -480,4 +480,49 @@ export const dbPlayers = {
         .sort((a, b) => b.date.localeCompare(a.date));
     },
   },
+
+  fanVotes: {
+    submit: async (matchId: string, teamId: string, playerId: string, voterIp: string, voterName?: string): Promise<void> => {
+      const { error } = await client!
+        .from('match_fan_votes')
+        .insert({
+          match_id: matchId,
+          team_id: teamId,
+          player_id: playerId,
+          voter_ip: voterIp,
+          voter_name: voterName?.trim() || null,
+        });
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error('Už jste pro tento zápas hlasoval/a.');
+        }
+        throw new Error(error.message);
+      }
+    },
+
+    getVoteCounts: async (matchId: string): Promise<{ playerId: string; voteCount: number }[]> => {
+      const { data, error } = await client!
+        .from('match_fan_votes')
+        .select('player_id')
+        .eq('match_id', matchId);
+      if (error) throw new Error(error.message);
+      const counts: Record<string, number> = {};
+      for (const row of (data || []) as { player_id: string }[]) {
+        counts[row.player_id] = (counts[row.player_id] || 0) + 1;
+      }
+      return Object.entries(counts)
+        .map(([playerId, voteCount]) => ({ playerId, voteCount }))
+        .sort((a, b) => b.voteCount - a.voteCount);
+    },
+
+    hasVotedByIp: async (matchId: string, voterIp: string): Promise<boolean> => {
+      const { data } = await client!
+        .from('match_fan_votes')
+        .select('id')
+        .eq('match_id', matchId)
+        .eq('voter_ip', voterIp)
+        .limit(1);
+      return (data?.length || 0) > 0;
+    },
+  },
 };

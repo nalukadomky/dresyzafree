@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useInView } from 'framer-motion';
 import type { HeroContent } from '@/lib/db-website';
 
 interface Props {
@@ -33,6 +33,8 @@ function clampPercent(v: number) {
 
 export function HeroSection({ content, teamName, logo, primaryColor, isEditing, onContentChange }: Props) {
   const containerRef = useRef<HTMLElement>(null);
+  const animRef = useRef<HTMLDivElement>(null);
+  const isInView = useInView(animRef, { once: true, amount: 0.3 });
   const headline = content.headline || teamName;
   const align = content.textAlign || 'center';
   const headlineSizeClass = HEADLINE_SIZE_MAP[content.headlineSize || 'lg'] || HEADLINE_SIZE_MAP.lg;
@@ -164,15 +166,18 @@ export function HeroSection({ content, teamName, logo, primaryColor, isEditing, 
                 {logoElement}
               </motion.div>
             ) : (
-              <div
+              <motion.div
                 className="absolute left-0 right-0 z-20"
                 style={{
                   top: `${content.logoPositionY ?? 20}%`,
                   transform: 'translateY(-50%)',
                 }}
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.6, ease: 'easeOut' }}
               >
                 {logoElement}
-              </div>
+              </motion.div>
             )
           )}
 
@@ -208,12 +213,15 @@ export function HeroSection({ content, teamName, logo, primaryColor, isEditing, 
               )}
             </motion.div>
           ) : (
-            <div
+            <motion.div
               className="absolute left-0 right-0 z-10"
               style={{
                 top: `${content.textPositionY ?? 60}%`,
                 transform: 'translateY(-50%)',
               }}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.15, ease: 'easeOut' }}
             >
               <h1
                 className={`${headlineSizeClass} font-bold mb-4`}
@@ -222,33 +230,50 @@ export function HeroSection({ content, teamName, logo, primaryColor, isEditing, 
                 {headline}
               </h1>
               {content.subtitle && (
-                <p
+                <motion.p
                   className="text-lg sm:text-xl max-w-xl"
                   style={{ color: subtitleColor, ...subtitleMargin }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.3, ease: 'easeOut' }}
                 >
                   {content.subtitle}
-                </p>
+                </motion.p>
               )}
-            </div>
+            </motion.div>
           )}
         </div>
       ) : (
         /* ===== CLASSIC FLEXBOX MODE ===== */
-        <div className={`relative z-10 ${alignWrapperClass} py-16 w-full`}>
-          {logoElement}
-          <h1
+        <div ref={animRef} className={`relative z-10 ${alignWrapperClass} py-16 w-full`}>
+          {logoElement && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={isInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+            >
+              {logoElement}
+            </motion.div>
+          )}
+          <motion.h1
             className={`${headlineSizeClass} font-bold mb-4`}
             style={{ color: textColor }}
+            initial={{ opacity: 0, y: 30 }}
+            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
+            transition={{ duration: 0.6, delay: 0.15, ease: 'easeOut' }}
           >
             {headline}
-          </h1>
+          </motion.h1>
           {content.subtitle && (
-            <p
+            <motion.p
               className="text-lg sm:text-xl max-w-xl"
               style={{ color: subtitleColor, ...subtitleMargin }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+              transition={{ duration: 0.6, delay: 0.3, ease: 'easeOut' }}
             >
               {content.subtitle}
-            </p>
+            </motion.p>
           )}
         </div>
       )}

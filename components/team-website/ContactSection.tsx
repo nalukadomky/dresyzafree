@@ -1,5 +1,7 @@
 'use client';
 
+import { useRef } from 'react';
+import { motion, useInView } from 'framer-motion';
 import type { ContactContent } from '@/lib/db-website';
 
 interface Props {
@@ -9,6 +11,8 @@ interface Props {
 
 export function ContactSection({ content, primaryColor }: Props) {
   const isDark = content.variant === 'dark';
+  const sectionRef = useRef<HTMLElement>(null);
+  const isInView = useInView(sectionRef, { once: true, amount: 0.2 });
   const hasPeople = content.people && content.people.length > 0 && content.people.some(p => p.name);
   const hasContent =
     content.address || content.phone || content.email ||
@@ -19,18 +23,27 @@ export function ContactSection({ content, primaryColor }: Props) {
 
   return (
     <section
+      ref={sectionRef}
       className="py-16 px-6"
       style={{ background: isDark ? '#0F172A' : undefined }}
     >
       <div className="max-w-2xl mx-auto text-center">
-        <h2
+        <motion.h2
           className="text-3xl font-bold mb-8"
           style={{ color: isDark ? '#F8FAFC' : '#1E293B' }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
         >
           {content.title || 'Kontakt'}
-        </h2>
+        </motion.h2>
 
-        <div className="space-y-4">
+        <motion.div
+          className="space-y-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+          transition={{ duration: 0.5, delay: 0.15, ease: 'easeOut' }}
+        >
           {content.address && (
             <div>
               <p
@@ -82,13 +95,16 @@ export function ContactSection({ content, primaryColor }: Props) {
           {hasPeople && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
               {content.people!.filter(p => p.name).map((person, idx) => (
-                <div
+                <motion.div
                   key={idx}
                   className="rounded-xl p-4 text-left"
                   style={{
                     background: isDark ? '#1E293B' : '#F8FAFC',
                     border: isDark ? '1px solid #334155' : '1px solid #F1F5F9',
                   }}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+                  transition={{ duration: 0.4, delay: 0.25 + idx * 0.08, ease: 'easeOut' }}
                 >
                   <p
                     className="font-semibold text-sm"
@@ -124,55 +140,69 @@ export function ContactSection({ content, primaryColor }: Props) {
                       )}
                     </div>
                   )}
-                </div>
+                </motion.div>
               ))}
             </div>
           )}
 
           {/* Social links */}
           {(content.socialLinks?.facebook || content.socialLinks?.instagram || content.socialLinks?.web) && (
-            <div className="flex justify-center gap-3 pt-4">
+            <motion.div
+              className="flex justify-center gap-3 pt-4"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={isInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.4, delay: 0.35, ease: 'easeOut' }}
+            >
               {content.socialLinks?.facebook && (
-                <a
+                <motion.a
                   href={content.socialLinks.facebook}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm hover:scale-110 transition-transform"
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm"
                   style={{ background: primaryColor }}
+                  whileHover={{ scale: 1.15 }}
+                  whileTap={{ scale: 0.95 }}
                 >
                   f
-                </a>
+                </motion.a>
               )}
               {content.socialLinks?.instagram && (
-                <a
+                <motion.a
                   href={content.socialLinks.instagram}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm hover:scale-110 transition-transform"
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm"
                   style={{ background: primaryColor }}
+                  whileHover={{ scale: 1.15 }}
+                  whileTap={{ scale: 0.95 }}
                 >
                   ig
-                </a>
+                </motion.a>
               )}
               {content.socialLinks?.web && (
-                <a
+                <motion.a
                   href={content.socialLinks.web}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm hover:scale-110 transition-transform"
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm"
                   style={{ background: primaryColor }}
+                  whileHover={{ scale: 1.15 }}
+                  whileTap={{ scale: 0.95 }}
                 >
                   🌐
-                </a>
+                </motion.a>
               )}
-            </div>
+            </motion.div>
           )}
-        </div>
+        </motion.div>
 
         {content.mapEmbedUrl && (
-          <div
+          <motion.div
             className="mt-8 rounded-xl overflow-hidden shadow-sm"
             style={{ border: isDark ? '1px solid #334155' : '1px solid #F1F5F9' }}
+            initial={{ opacity: 0, y: 30 }}
+            animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
+            transition={{ duration: 0.6, delay: 0.4, ease: 'easeOut' }}
           >
             <iframe
               src={content.mapEmbedUrl}
@@ -183,7 +213,7 @@ export function ContactSection({ content, primaryColor }: Props) {
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
             />
-          </div>
+          </motion.div>
         )}
       </div>
     </section>

@@ -1,5 +1,7 @@
 'use client';
 
+import { useRef } from 'react';
+import { motion, useInView } from 'framer-motion';
 import type { TextBlockContent } from '@/lib/db-website';
 
 interface Props {
@@ -21,11 +23,14 @@ export function TextBlockSection({ content }: Props) {
   const lineHeight = content.lineHeight ?? 1.6;
   const letterSpacing = content.letterSpacing ?? 0;
   const paddingY = content.paddingY ?? 48;
+  const sectionRef = useRef<HTMLElement>(null);
+  const isInView = useInView(sectionRef, { once: true, amount: 0.3 });
 
   if (!content.text) return null;
 
   return (
     <section
+      ref={sectionRef}
       style={{
         background: isDark ? '#0F172A' : undefined,
         paddingTop: `${paddingY}px`,
@@ -34,7 +39,7 @@ export function TextBlockSection({ content }: Props) {
       className="px-6"
     >
       <div className="max-w-3xl mx-auto">
-        <p
+        <motion.p
           className="whitespace-pre-line"
           style={{
             color: isDark ? '#CBD5E1' : '#475569',
@@ -43,9 +48,12 @@ export function TextBlockSection({ content }: Props) {
             lineHeight,
             letterSpacing: letterSpacing ? `${letterSpacing}px` : undefined,
           }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
         >
           {content.text}
-        </p>
+        </motion.p>
       </div>
     </section>
   );

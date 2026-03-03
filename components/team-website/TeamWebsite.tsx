@@ -1,6 +1,6 @@
 'use client';
 
-import type { PublicWebsiteData, HeroContent, TeamMembersContent, EventsContent, ContactContent, AboutContent, GalleryContent, TextBlockContent, FanVotingContent, WebsiteSectionType } from '@/lib/db-website';
+import type { PublicWebsiteData, HeroContent, TeamMembersContent, EventsContent, ContactContent, AboutContent, GalleryContent, TextBlockContent, FanVotingContent, LastMatchContent, WebsiteSectionType } from '@/lib/db-website';
 import { HeroSection } from './HeroSection';
 import { TeamSection } from './TeamSection';
 import { EventsSection } from './EventsSection';
@@ -9,14 +9,16 @@ import { AboutSection } from './AboutSection';
 import { GallerySection } from './GallerySection';
 import { TextBlockSection } from './TextBlockSection';
 import { FanVotingSection } from './FanVotingSection';
+import { LastMatchSection } from './LastMatchSection';
 
 interface Props {
   data: PublicWebsiteData;
   slug?: string;
 }
 
-export function TeamWebsite({ data, slug }: Props) {
-  const { team, website, sections, events, players } = data;
+export function TeamWebsite({ data, slug: slugProp }: Props) {
+  const { team, website, sections, events, players, slug: dataSlug, lastMatch } = data;
+  const slug = slugProp || dataSlug;
   const sectionMap = new Map(sections.map((s) => [s.sectionType, s]));
 
   const renderSection = (type: WebsiteSectionType) => {
@@ -93,6 +95,17 @@ export function TeamWebsite({ data, slug }: Props) {
             players={players}
             primaryColor={website.primaryColor}
             teamName={team.teamName}
+            slug={slug}
+          />
+        );
+      case 'lastMatch':
+        return (
+          <LastMatchSection
+            key="lastMatch"
+            content={section.content as LastMatchContent}
+            lastMatch={lastMatch}
+            players={players}
+            primaryColor={website.primaryColor}
             slug={slug}
           />
         );

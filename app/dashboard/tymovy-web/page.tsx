@@ -17,6 +17,7 @@ import type {
   GalleryContent,
   TextBlockContent,
   FanVotingContent,
+  LastMatchContent,
 } from '@/lib/db-website';
 import { generateSlug, DEFAULT_SECTION_CONTENT } from '@/lib/db-website';
 import { EditableSection } from '@/components/website-builder/EditableSection';
@@ -29,6 +30,7 @@ import { AboutEditor } from '@/components/website-builder/AboutEditor';
 import { GalleryEditor } from '@/components/website-builder/GalleryEditor';
 import { TextBlockEditor } from '@/components/website-builder/TextBlockEditor';
 import { FanVotingEditor } from '@/components/website-builder/FanVotingEditor';
+import { LastMatchEditor } from '@/components/website-builder/LastMatchEditor';
 import { HeroSection } from '@/components/team-website/HeroSection';
 import { TeamSection } from '@/components/team-website/TeamSection';
 import { EventsSection } from '@/components/team-website/EventsSection';
@@ -37,6 +39,7 @@ import { AboutSection } from '@/components/team-website/AboutSection';
 import { GallerySection } from '@/components/team-website/GallerySection';
 import { TextBlockSection } from '@/components/team-website/TextBlockSection';
 import { FanVotingSection } from '@/components/team-website/FanVotingSection';
+import { LastMatchSection } from '@/components/team-website/LastMatchSection';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -64,7 +67,7 @@ interface PlayerData {
   photoUrl?: string;
 }
 
-const ALL_SECTION_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock', 'fan-voting'];
+const ALL_SECTION_TYPES: WebsiteSectionType[] = ['hero', 'team', 'events', 'contact', 'about', 'gallery', 'textblock', 'fan-voting', 'lastMatch'];
 
 const SECTION_LABELS: Record<WebsiteSectionType, string> = {
   hero: 'Úvod',
@@ -75,6 +78,7 @@ const SECTION_LABELS: Record<WebsiteSectionType, string> = {
   gallery: 'Galerie',
   textblock: 'Textové pole',
   'fan-voting': 'Hráč zápasu',
+  lastMatch: 'Poslední zápas',
 };
 
 const SECTION_ICONS: Record<WebsiteSectionType, string> = {
@@ -86,6 +90,7 @@ const SECTION_ICONS: Record<WebsiteSectionType, string> = {
   gallery: '🖼️',
   textblock: '📄',
   'fan-voting': '⭐',
+  lastMatch: '⚽',
 };
 
 const SECTION_DESCRIPTIONS: Record<WebsiteSectionType, string> = {
@@ -97,6 +102,7 @@ const SECTION_DESCRIPTIONS: Record<WebsiteSectionType, string> = {
   gallery: 'Fotogalerie s lightboxem a volitelným popiskem',
   textblock: 'Volný textový blok s nastavením řádkování a mezer',
   'fan-voting': 'Hlasování fanoušků o nejlepšího hráče posledního zápasu',
+  lastMatch: 'Výsledek posledního zápasu s hlasováním o hráče utkání',
 };
 
 const DEFAULTS: Record<WebsiteSectionType, unknown> = {
@@ -108,6 +114,7 @@ const DEFAULTS: Record<WebsiteSectionType, unknown> = {
   gallery: DEFAULT_SECTION_CONTENT.gallery,
   textblock: DEFAULT_SECTION_CONTENT.textblock,
   'fan-voting': { title: 'Hráč utkání podle fanoušků', variant: 'light' },
+  lastMatch: { title: 'Poslední zápas', showScorers: true, showVoting: true, variant: 'light' },
 };
 
 // ── Templates ─────────────────────────────────────────────────────────
@@ -497,6 +504,16 @@ export default function TeamWebBuilder() {
             teamName={team?.teamName}
           />
         );
+      case 'lastMatch':
+        return (
+          <LastMatchSection
+            content={getSectionContent('lastMatch') as LastMatchContent}
+            lastMatch={null}
+            players={players}
+            primaryColor={primaryColor}
+            isPreview={true}
+          />
+        );
       default:
         return null;
     }
@@ -583,6 +600,13 @@ export default function TeamWebBuilder() {
           <FanVotingEditor
             content={getSectionContent('fan-voting') as FanVotingContent}
             onChange={(c) => updateSectionContent('fan-voting', c)}
+          />
+        );
+      case 'lastMatch':
+        return (
+          <LastMatchEditor
+            content={getSectionContent('lastMatch') as LastMatchContent}
+            onChange={(c) => updateSectionContent('lastMatch', c)}
           />
         );
       default:

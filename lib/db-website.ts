@@ -5,7 +5,7 @@ const client = supabaseAdmin ?? supabase;
 
 // ── Types ────────────────────────────────────────────────────────────
 
-export type WebsiteSectionType = 'hero' | 'team' | 'events' | 'contact' | 'about' | 'gallery' | 'textblock' | 'fan-voting';
+export type WebsiteSectionType = 'hero' | 'team' | 'events' | 'contact' | 'about' | 'gallery' | 'textblock' | 'fan-voting' | 'lastMatch';
 
 export interface TeamWebsite {
   id: string;
@@ -22,7 +22,7 @@ export interface TeamWebsiteSection {
   id: string;
   teamId: string;
   sectionType: WebsiteSectionType;
-  content: HeroContent | TeamMembersContent | EventsContent | ContactContent | AboutContent | GalleryContent | TextBlockContent | FanVotingContent;
+  content: HeroContent | TeamMembersContent | EventsContent | ContactContent | AboutContent | GalleryContent | TextBlockContent | FanVotingContent | LastMatchContent;
   createdAt: string;
   updatedAt: string;
 }
@@ -138,6 +138,13 @@ export interface FanVotingContent {
   variant?: SectionVariant;
 }
 
+export interface LastMatchContent {
+  title: string;
+  showScorers: boolean;
+  showVoting: boolean;
+  variant?: SectionVariant;
+}
+
 export interface LastMatchData {
   id: string;
   date: string;
@@ -147,13 +154,28 @@ export interface LastMatchData {
   startTime?: string;
 }
 
+export interface PublicMatchData {
+  id: string;
+  date: string;
+  opponent?: string;
+  name?: string;
+  result?: string;
+  goalsFor?: number;
+  goalsAgainst?: number;
+  scorers: { goalOrder: number; playerName: string }[];
+  assists: { assistOrder: number; playerName: string }[];
+  fanVotes: { playerId: string; playerName: string; voteCount: number }[];
+  totalVotes: number;
+}
+
 export interface PublicWebsiteData {
+  slug: string;
   team: { id: string; teamName: string; logo?: string };
   website: TeamWebsite;
   sections: TeamWebsiteSection[];
   events: { id: string; date: string; eventType: string; location?: string; opponent?: string; startTime?: string; note?: string }[];
   players: { id: string; name: string; jerseyNumber?: number; photoUrl?: string }[];
-  lastMatch?: LastMatchData;
+  lastMatch?: PublicMatchData | null;
 }
 
 // ── Mappers ──────────────────────────────────────────────────────────
@@ -230,6 +252,11 @@ export const DEFAULT_SECTION_CONTENT: Record<WebsiteSectionType, unknown> = {
     title: 'Hráč utkání podle fanoušků',
     variant: 'light',
   } as FanVotingContent,
+  lastMatch: {
+    title: 'Poslední zápas',
+    showScorers: true,
+    showVoting: true,
+  } as LastMatchContent,
 };
 
 // ── Slug helpers ─────────────────────────────────────────────────────
@@ -398,7 +425,7 @@ export const dbWebsite = {
     const website = mapWebsite(websiteData);
     if (!website.published) return null;
 
-    // 3. Get sections + upcoming events + players in parallel
+    // 3. Get sections + upcoming events + players + last match in parallel
     const today = new Date().toISOString().split('T')[0];
     const [sectionsRes, eventsRes, playersRes, lastMatchRes] = await Promise.all([
       client!.from('team_website_sections').select('*').eq('team_id', teamId),
@@ -408,10 +435,9 @@ export const dbWebsite = {
         .order('date', { ascending: true })
         .limit(10),
       client!.from('players').select('id, name, jersey_number, photo_url').eq('team_id', teamId),
-      client!.from('matches').select('id, date, opponent, goals_for, goals_against, start_time')
+      client!.from('matches').select('*')
         .eq('team_id', teamId)
-        .not('scored_at', 'is', null)
-        .order('scored_at', { ascending: false })
+        .order('date', { ascending: false })
         .limit(1),
     ]);
 
@@ -431,17 +457,60 @@ export const dbWebsite = {
       jerseyNumber: (p.jersey_number as number | null) ?? undefined,
       photoUrl: (p.photo_url as string) || undefined,
     }));
-    const lastMatchRow = lastMatchRes.data?.[0] as Record<string, unknown> | undefined;
-    const lastMatch: LastMatchData | undefined = lastMatchRow ? {
-      id: lastMatchRow.id as string,
-      date: lastMatchRow.date as string,
-      opponent: (lastMatchRow.opponent as string) || undefined,
-      goalsFor: lastMatchRow.goals_for as number,
-      goalsAgainst: lastMatchRow.goals_against as number,
-      startTime: (lastMatchRow.start_time as string) || undefined,
-    } : undefined;
+    // Build lastMatch data
+    let lastMatch: PublicMatchData | null = null;
+    const matchRow = lastMatchRes.data?.[0] as Record<string, unknown> | undefined;
+    if (matchRow) {
+      const matchId = matchRow.id as string;
+      const playerMap = new Map(players.map(p => [p.id, p.name]));
+
+      // Fetch scorers, assists, and fan votes for this match
+      const [scorersRes, assistsRes, votesRes] = await Promise.all([
+        client!.from('match_goal_scorers').select('goal_order, player_id')
+          .eq('match_id', matchId).order('goal_order'),
+        client!.from('match_assists').select('assist_order, player_id')
+          .eq('match_id', matchId).order('assist_order'),
+        client!.from('match_fan_votes').select('player_id')
+          .eq('match_id', matchId),
+      ]);
+
+      // Aggregate fan votes
+      const voteCounts: Record<string, number> = {};
+      for (const v of (votesRes.data || []) as { player_id: string }[]) {
+        voteCounts[v.player_id] = (voteCounts[v.player_id] || 0) + 1;
+      }
+      const totalVotes = (votesRes.data || []).length;
+      const fanVotes = Object.entries(voteCounts)
+        .map(([playerId, voteCount]) => ({
+          playerId,
+          playerName: playerMap.get(playerId) || 'Neznámý',
+          voteCount,
+        }))
+        .sort((a, b) => b.voteCount - a.voteCount);
+
+      lastMatch = {
+        id: matchId,
+        date: matchRow.date as string,
+        opponent: (matchRow.opponent as string) || undefined,
+        name: (matchRow.name as string) || undefined,
+        result: (matchRow.result as string) || undefined,
+        goalsFor: (matchRow.goals_for as number | null) ?? undefined,
+        goalsAgainst: (matchRow.goals_against as number | null) ?? undefined,
+        scorers: ((scorersRes.data || []) as { goal_order: number; player_id: string }[]).map(s => ({
+          goalOrder: s.goal_order,
+          playerName: playerMap.get(s.player_id) || 'Neznámý',
+        })),
+        assists: ((assistsRes.data || []) as { assist_order: number; player_id: string }[]).map(a => ({
+          assistOrder: a.assist_order,
+          playerName: playerMap.get(a.player_id) || 'Neznámý',
+        })),
+        fanVotes,
+        totalVotes,
+      };
+    }
 
     return {
+      slug,
       team: {
         id: teamId,
         teamName: teamData.teamname as string,
