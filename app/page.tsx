@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { motion, useScroll, useTransform, useInView, useMotionValue, useSpring, AnimatePresence } from 'framer-motion';
 import {
   MessageSquareWarning, BarChart3, CalendarDays, Crosshair,
-  Star, Trophy, ChevronRight, ArrowRight, Check, Menu, X,
+  Star, Trophy, ChevronRight, ArrowRight, Check, Menu, X, Globe,
 } from 'lucide-react';
 
 // --- Data ---
@@ -69,10 +69,23 @@ const featureTabs = [
     description: 'Přetáhni hráče na hřiště a připrav sestavu. Fotbal, hokej a florbal.',
     bullets: ['3 sporty, 5 variant sestav', 'Kreslení šipek a tahů', 'Drag & drop hráčů z kádru'],
   },
+  {
+    id: 'web', label: 'Týmový web', icon: Globe,
+    title: 'Vlastní webová stránka týmu',
+    description: 'Každý tým získá vlastní web s aktuálními výsledky, kalendářem a sestavou. Fanoušci mohou přímo na webu hlasovat pro hráče zápasu.',
+    bullets: ['Vizuální web builder s předpřipravenou šablonou', 'Hlasování fanoušků o hráče utkání', 'Automaticky aktualizovaný žebříček a kalendář', 'Vlastní URL adresa týmu'],
+  },
+];
+
+const headlines = [
+  { line1: 'Zvol hráče utkání.', line2: 'Měj tréninky', line3: 'pod kontrolou.' },
+  { line1: 'Posuň soutěživost', line2: 'svého týmu', line3: 'na vyšší úroveň.' },
+  { line1: 'Vlastní web', line2: 'bez nutnosti', line3: 'programování.' },
+  { line1: 'Přehled statistik', line2: 'jako profesionál', line3: 'v jedné aplikaci.' },
 ];
 
 const steps = [
-  { number: '01', title: 'Registrace', subtitle: 'Založíte tým za 3 minuty', description: 'Zadejte název týmu, kontakt a heslo. Žádná kreditní karta, žádný háček.' },
+  { number: '01', title: 'Registrace', subtitle: 'Založíte tým za 3 minuty', description: 'Zadejte název týmu, kontakt a heslo. Žádné závazky, žádný háček.' },
   { number: '02', title: 'Přidejte hráče', subtitle: 'Nastavte kádr a začněte plánovat', description: 'Pozvěte spoluhráče, naplánujte tréninky a zápasy přes kalendář.' },
   { number: '03', title: 'Hodnoťte a sledujte', subtitle: 'Po každém zápase máte data', description: 'Hráči hodnotí výkony, systém počítá žebříček a kanadské body.' },
 ];
@@ -289,6 +302,72 @@ function MockupTactics() {
   );
 }
 
+function MockupWebsite() {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="flex gap-1">
+          <div className="w-2 h-2 rounded-full bg-red-500/60" />
+          <div className="w-2 h-2 rounded-full bg-yellow-500/60" />
+          <div className="w-2 h-2 rounded-full bg-green-500/60" />
+        </div>
+        <div className="flex-1 h-5 rounded bg-white/5 flex items-center px-2">
+          <span className="text-[8px] text-white/30">mypitch.cz/fc-sokol</span>
+        </div>
+      </div>
+      <div className="rounded-lg bg-white/5 p-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
+            <span className="text-[8px] font-bold text-blue-400">FC</span>
+          </div>
+          <div>
+            <p className="text-white text-xs font-semibold">FC Sokol Praha</p>
+            <p className="text-white/30 text-[9px]">Založeno 2024</p>
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-lg bg-white/5 p-2 text-center">
+          <p className="text-blue-400 text-sm font-bold">12</p>
+          <p className="text-white/40 text-[9px]">Zápasů</p>
+        </div>
+        <div className="rounded-lg bg-white/5 p-2 text-center">
+          <p className="text-blue-400 text-sm font-bold">18</p>
+          <p className="text-white/40 text-[9px]">Hráčů</p>
+        </div>
+        <div className="rounded-lg bg-white/5 p-2 text-center">
+          <p className="text-accent text-sm font-bold">7.2</p>
+          <p className="text-white/40 text-[9px]">Ø Rating</p>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-white/40 text-[9px] uppercase tracking-wider">Příští událost</p>
+        <div className="rounded-lg bg-white/5 p-2 flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+          <div>
+            <p className="text-white text-[10px] font-medium">Zápas vs Sparta</p>
+            <p className="text-white/30 text-[9px]">So 15.3. 15:00</p>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-white/40 text-[9px] uppercase tracking-wider">Hráč zápasu — hlasování fanoušků</p>
+        <div className="space-y-1">
+          {[{ name: 'Novák', votes: 42 }, { name: 'Dvořák', votes: 31 }, { name: 'Svoboda', votes: 18 }].map((p, i) => (
+            <div key={p.name} className="flex items-center justify-between rounded bg-white/5 px-2 py-1">
+              <div className="flex items-center gap-1.5">
+                {i === 0 && <span className="text-[9px]">👑</span>}
+                <span className="text-white/60 text-[10px]">{p.name}</span>
+              </div>
+              <span className="text-accent text-[10px] font-semibold">{p.votes} hlasů</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- Animated Counter ---
 
 function AnimatedCounter({ target, suffix, label }: { target: number; suffix: string; label: string }) {
@@ -330,16 +409,50 @@ export default function Home() {
   const [demoRating, setDemoRating] = useState(7);
   const [demoSubmitted, setDemoSubmitted] = useState(false);
   const [heroRating, setHeroRating] = useState(9);
+  const [heroConfetti, setHeroConfetti] = useState(false);
   const [yearlyBilling, setYearlyBilling] = useState(false);
+  const [headlineIndex, setHeadlineIndex] = useState(0);
+
+  useEffect(() => {
+    if (heroRating === 10) {
+      setHeroConfetti(true);
+      const t = setTimeout(() => setHeroConfetti(false), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [heroRating]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setHeadlineIndex((prev) => (prev + 1) % headlines.length);
+    }, 4000);
+    return () => clearTimeout(timeout);
+  }, [headlineIndex]);
 
   const { scrollYProgress } = useScroll();
   const navBg = useTransform(scrollYProgress, [0, 0.03], [0, 1]);
+  const navBgColor = useTransform(navBg, (v) => `rgba(5, 7, 11, ${v * 0.9})`);
 
   // Mouse-reactive hero background
   const mouseX = useMotionValue(0.5);
   const mouseY = useMotionValue(0.5);
   const springX = useSpring(mouseX, { stiffness: 50, damping: 30 });
   const springY = useSpring(mouseY, { stiffness: 50, damping: 30 });
+
+  // Hoisted transforms for hero parallax (hooks can't be called in JSX)
+  const glowLeft = useTransform(springX, (v) => `calc(${v * 100}% - 350px)`);
+  const glowTop = useTransform(springY, (v) => `calc(${v * 100}% - 350px)`);
+  const glow2Right = useTransform(springX, (v) => `calc(${v * 100}% - 250px)`);
+  const glow2Bottom = useTransform(springY, (v) => `calc(${v * 100}% - 250px)`);
+  const dot1X = useTransform(springX, [0, 1], [25, -25]);
+  const dot1Y = useTransform(springY, [0, 1], [15, -15]);
+  const dot2X = useTransform(springX, [0, 1], [-20, 20]);
+  const dot2Y = useTransform(springY, [0, 1], [20, -20]);
+  const dot3X = useTransform(springX, [0, 1], [30, -30]);
+  const dot3Y = useTransform(springY, [0, 1], [-25, 25]);
+  const dot4X = useTransform(springX, [0, 1], [-35, 35]);
+  const dot4Y = useTransform(springY, [0, 1], [20, -20]);
+  const dot5X = useTransform(springX, [0, 1], [15, -15]);
+  const dot5Y = useTransform(springY, [0, 1], [-10, 10]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -354,7 +467,7 @@ export default function Home() {
     { label: 'Funkce', href: '#funkce' },
     { label: 'Jak to funguje', href: '#jak-to-funguje' },
     { label: 'Demo', href: '#demo' },
-    { label: 'Cena', href: '#cena' },
+    { label: 'Early Access', href: '#cena' },
   ];
 
   return (
@@ -362,7 +475,7 @@ export default function Home() {
       {/* === Nav === */}
       <motion.nav
         className="fixed top-0 inset-x-0 z-50 transition-colors duration-300"
-        style={{ backgroundColor: useTransform(navBg, (v) => `rgba(5, 7, 11, ${v * 0.9})`) }}
+        style={{ backgroundColor: navBgColor }}
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
@@ -438,8 +551,8 @@ export default function Home() {
           <motion.div
             className="absolute w-[700px] h-[700px] rounded-full pointer-events-none"
             style={{
-              left: useTransform(springX, (v) => `calc(${v * 100}% - 350px)`),
-              top: useTransform(springY, (v) => `calc(${v * 100}% - 350px)`),
+              left: glowLeft,
+              top: glowTop,
               background: 'radial-gradient(circle, rgba(59,130,246,0.10) 0%, rgba(59,130,246,0.04) 40%, transparent 70%)',
             }}
           />
@@ -447,37 +560,37 @@ export default function Home() {
           <motion.div
             className="absolute w-[500px] h-[500px] rounded-full pointer-events-none"
             style={{
-              right: useTransform(springX, (v) => `calc(${v * 100}% - 250px)`),
-              bottom: useTransform(springY, (v) => `calc(${v * 100}% - 250px)`),
+              right: glow2Right,
+              bottom: glow2Bottom,
               background: 'radial-gradient(circle, rgba(30,58,138,0.08) 0%, transparent 60%)',
             }}
           />
           {/* Floating dots with parallax */}
           <motion.div
             className="absolute top-[20%] right-[20%] w-1 h-1 bg-blue-400/25 rounded-full pointer-events-none"
-            style={{ x: useTransform(springX, [0, 1], [25, -25]), y: useTransform(springY, [0, 1], [15, -15]) }}
+            style={{ x: dot1X, y: dot1Y }}
           />
           <motion.div
             className="absolute top-[45%] right-[10%] w-1.5 h-1.5 bg-blue-300/15 rounded-full pointer-events-none"
-            style={{ x: useTransform(springX, [0, 1], [-20, 20]), y: useTransform(springY, [0, 1], [20, -20]) }}
+            style={{ x: dot2X, y: dot2Y }}
           />
           <motion.div
             className="absolute top-[70%] left-[20%] w-1 h-1 bg-blue-400/20 rounded-full pointer-events-none"
-            style={{ x: useTransform(springX, [0, 1], [30, -30]), y: useTransform(springY, [0, 1], [-25, 25]) }}
+            style={{ x: dot3X, y: dot3Y }}
           />
           <motion.div
             className="absolute top-[15%] left-[45%] w-0.5 h-0.5 bg-white/15 rounded-full pointer-events-none"
-            style={{ x: useTransform(springX, [0, 1], [-35, 35]), y: useTransform(springY, [0, 1], [20, -20]) }}
+            style={{ x: dot4X, y: dot4Y }}
           />
           <motion.div
             className="absolute top-[55%] left-[55%] w-1 h-1 bg-blue-500/10 rounded-full pointer-events-none"
-            style={{ x: useTransform(springX, [0, 1], [15, -15]), y: useTransform(springY, [0, 1], [-10, 10]) }}
+            style={{ x: dot5X, y: dot5Y }}
           />
         </div>
 
-        <div className="relative z-10 max-w-7xl pl-8 md:pl-16 lg:pl-24 pr-6 py-20 flex items-center justify-between gap-12">
+        <div className="relative z-10 max-w-7xl pl-8 md:pl-16 lg:pl-24 pr-6 lg:pr-[340px] py-20">
           {/* Left — text */}
-          <div className="flex-1 min-w-0">
+          <div>
             <motion.p
               className="text-blue-400 text-sm font-semibold uppercase tracking-[0.2em] mb-5"
               initial={{ opacity: 0, y: 20 }}
@@ -486,23 +599,28 @@ export default function Home() {
             >
               Sportovní platforma pro týmy
             </motion.p>
-            <motion.h1
-              className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold leading-[0.95] tracking-[-0.03em] max-w-5xl"
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: [0.25, 0.46, 0.45, 0.94] }}
-            >
-              Zvol hráče utkání.
-              <br />
-              <span className="text-blue-400">Měj tréninky</span> pod kontrolou.
-            </motion.h1>
+            <AnimatePresence mode="wait">
+              <motion.h1
+                key={headlineIndex}
+                className="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold leading-[0.95] tracking-[-0.03em] max-w-5xl"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.45 }}
+              >
+                {headlines[headlineIndex].line1}
+                <br />
+                <span className="text-blue-400">{headlines[headlineIndex].line2}</span>
+                {headlines[headlineIndex].line3 && <><br />{headlines[headlineIndex].line3}</>}
+              </motion.h1>
+            </AnimatePresence>
             <motion.p
               className="text-lg md:text-xl text-white/50 max-w-xl mt-6"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
             >
-              Jedna platforma pro hodnocení hráčů, docházku, kalendář událostí a taktiku. Zdarma, pro celý tým.
+              Jedna platforma pro hodnocení hráčů, docházku, kalendář událostí, taktiku a vlastní týmový web. Pro celý tým.
             </motion.p>
             <motion.div
               className="mt-10 flex flex-wrap items-center gap-4"
@@ -514,7 +632,7 @@ export default function Home() {
                 href="/register"
                 className="px-8 py-4 rounded-full bg-accent text-black font-bold text-lg animate-glow-pulse hover:bg-accent-light transition-colors"
               >
-                Registrovat tým zdarma
+                Registrovat tým
               </Link>
               <a
                 href="#jak-to-funguje"
@@ -526,39 +644,79 @@ export default function Home() {
             </motion.div>
           </div>
 
-          {/* Right — floating rating card */}
-          <motion.div
-            className="hidden lg:flex flex-col items-center w-[280px] shrink-0"
-            initial={{ opacity: 0, x: 60 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, delay: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
-          >
-            <motion.div
-              className="relative w-full rounded-3xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm p-6 shadow-[0_8px_40px_rgba(0,0,0,0.4)]"
-              animate={{ y: [0, -8, 0] }}
-              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              {/* Glow behind card */}
-              <div className="absolute -inset-1 rounded-3xl bg-gradient-to-b from-blue-500/[0.06] to-transparent -z-10 blur-xl" />
-              <p className="text-white/40 text-xs uppercase tracking-widest mb-4 text-center">Hodnocení hráče</p>
-              {/* Big number + emoji */}
-              <div className="flex items-center justify-center gap-3 mb-2">
-                <span className="text-6xl font-bold text-white tabular-nums">{heroRating}</span>
-                <span className="text-4xl">{HERO_EMOJI[heroRating] || ''}</span>
-              </div>
-              <p className="text-white/50 text-sm text-center mb-5">{HERO_LABELS[heroRating] || ''}</p>
-              {/* Slider */}
-              <div className="px-1">
-                <SmoothSnapSlider value={heroRating} onChange={setHeroRating} />
-              </div>
-              <div className="flex justify-between text-[10px] text-white/25 mt-1.5 px-0.5">
-                <span>0</span>
-                <span>5</span>
-                <span>10</span>
-              </div>
-            </motion.div>
-          </motion.div>
         </div>
+
+        {/* Right — floating rating card (absolute to section, fixed position) */}
+        <motion.div
+          className="hidden lg:flex flex-col items-center w-[280px] absolute right-[calc(50%-610px+30px)] top-[35%] -translate-y-1/2 z-10"
+          initial={{ opacity: 0, x: 60 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.8, delay: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
+        >
+          <motion.div
+            className="relative overflow-visible w-full rounded-3xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm p-6 shadow-[0_8px_40px_rgba(0,0,0,0.4)]"
+            animate={{ y: [0, -8, 0] }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <div className="absolute -inset-1 rounded-3xl bg-gradient-to-b from-blue-500/[0.06] to-transparent -z-10 blur-xl" />
+            {/* Confetti on max rating */}
+            <AnimatePresence>
+              {heroConfetti && (
+                <>
+                  {Array.from({ length: 20 }).map((_, i) => {
+                    const angle = (i / 20) * 360 + (i % 3) * 12;
+                    const rad = (angle * Math.PI) / 180;
+                    const dist = 90 + (i % 5) * 15;
+                    const tx = Math.cos(rad) * dist;
+                    const ty = Math.sin(rad) * dist - 30;
+                    const colors = ['#86EF42', '#60A5FA', '#FACC15', '#F472B6', '#A78BFA', '#34D399'];
+                    const color = colors[i % colors.length];
+                    const size = 5 + (i % 4);
+                    const isCircle = i % 3 === 0;
+                    return (
+                      <motion.span
+                        key={`confetti-${i}`}
+                        className="absolute pointer-events-none z-20"
+                        style={{
+                          left: '50%',
+                          top: '40%',
+                          width: size,
+                          height: isCircle ? size : size * 0.4,
+                          borderRadius: isCircle ? '50%' : '1px',
+                          backgroundColor: color,
+                        }}
+                        initial={{ opacity: 1, x: 0, y: 0, scale: 0, rotate: 0 }}
+                        animate={{
+                          opacity: [1, 1, 0],
+                          x: tx,
+                          y: ty,
+                          scale: [0, 1.3, 0.6],
+                          rotate: (i % 2 === 0 ? 1 : -1) * (360 + i * 30),
+                        }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 1 + (i % 3) * 0.15, ease: 'easeOut' }}
+                      />
+                    );
+                  })}
+                </>
+              )}
+            </AnimatePresence>
+            <p className="text-white/40 text-xs uppercase tracking-widest mb-4 text-center">Hodnocení hráče</p>
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <span className="text-6xl font-bold text-white tabular-nums">{heroRating}</span>
+              <span className="text-4xl">{HERO_EMOJI[heroRating] || ''}</span>
+            </div>
+            <p className="text-white/50 text-sm text-center mb-5">{HERO_LABELS[heroRating] || ''}</p>
+            <div className="px-1">
+              <SmoothSnapSlider value={heroRating} onChange={setHeroRating} />
+            </div>
+            <div className="flex justify-between text-[10px] text-white/25 mt-1.5 px-0.5">
+              <span>0</span>
+              <span>5</span>
+              <span>10</span>
+            </div>
+          </motion.div>
+        </motion.div>
       </section>
 
       {/* === Problems === */}
@@ -663,6 +821,7 @@ export default function Home() {
                 {activeFeatureTab === 1 && <MockupLeaderboard />}
                 {activeFeatureTab === 2 && <MockupCalendar />}
                 {activeFeatureTab === 3 && <MockupTactics />}
+                {activeFeatureTab === 4 && <MockupWebsite />}
               </MockupFrame>
             </motion.div>
           </AnimatePresence>
@@ -811,9 +970,9 @@ export default function Home() {
             viewport={{ once: true, amount: 0.3 }}
             transition={{ duration: 0.6 }}
           >
-            <span className="text-blue-400 text-sm font-semibold uppercase tracking-[0.15em]">Ceník</span>
-            <h2 className="text-3xl md:text-5xl font-bold mt-3 tracking-tight">Jednoduchý ceník</h2>
-            <p className="text-white/50 mt-4 text-lg">Jeden plán, všechny funkce. První měsíc na zkoušku zdarma.</p>
+            <span className="text-blue-400 text-sm font-semibold uppercase tracking-[0.15em]">Early Access</span>
+            <h2 className="text-3xl md:text-5xl font-bold mt-3 tracking-tight">Buďte u toho první</h2>
+            <p className="text-white/50 mt-4 text-lg">Jeden plán, všechny funkce. Získejte přístup mezi prvními týmy.</p>
           </motion.div>
 
           <motion.div
@@ -826,55 +985,12 @@ export default function Home() {
           >
             <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
 
-            {/* Billing toggle */}
-            <div className="flex items-center justify-center mb-8">
-              <div className="flex p-1 rounded-xl bg-white/5 max-w-xs w-full">
-                <button
-                  onClick={() => setYearlyBilling(false)}
-                  className={`flex-1 text-center py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    !yearlyBilling ? 'bg-blue-500/20 text-blue-400 shadow-sm' : 'text-white/50 hover:text-white/70'
-                  }`}
-                >
-                  Měsíčně
-                </button>
-                <button
-                  onClick={() => setYearlyBilling(true)}
-                  className={`flex-1 text-center py-2.5 rounded-lg text-sm font-medium transition-all duration-200 relative ${
-                    yearlyBilling ? 'bg-blue-500/20 text-blue-400 shadow-sm' : 'text-white/50 hover:text-white/70'
-                  }`}
-                >
-                  Ročně <span className="text-accent text-xs ml-1">−20 %</span>
-                </button>
-              </div>
-            </div>
-
             {/* Header */}
             <div className="text-center mb-8">
-              <div className="inline-block bg-accent/15 text-accent text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
-                První měsíc zdarma
+              <div className="inline-block bg-accent/15 text-accent text-xs font-semibold px-4 py-1.5 rounded-full mb-6 animate-pulse">
+                Early Access
               </div>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={yearlyBilling ? 'yearly' : 'monthly'}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <div className="flex items-baseline justify-center gap-2 mb-1">
-                    <span className="text-5xl md:text-6xl font-bold text-white">{yearlyBilling ? '312 Kč' : '390 Kč'}</span>
-                    <span className="text-white/40 text-lg">/ měsíc</span>
-                  </div>
-                  {yearlyBilling ? (
-                    <p className="text-white/50 text-sm">
-                      <span className="text-white/30 line-through mr-2">4 680 Kč / rok</span>
-                      <span className="text-blue-400 font-medium">3 744 Kč / rok</span>
-                    </p>
-                  ) : (
-                    <p className="text-white/50 text-sm">Až 20 hráčů &middot; <span className="text-blue-400 font-medium">19,50 Kč / hráč</span></p>
-                  )}
-                </motion.div>
-              </AnimatePresence>
+              <p className="text-white/50 text-lg max-w-md mx-auto">Registruj se a posuň soutěživost vašeho týmu na novou úroveň.</p>
             </div>
 
             {/* CTA */}
@@ -882,12 +998,12 @@ export default function Home() {
               href="/register"
               className="block w-full max-w-sm mx-auto py-4 rounded-xl bg-accent text-black text-base font-bold text-center hover:bg-accent-light transition-colors shadow-[0_0_24px_rgba(134,239,66,0.2)] mb-8"
             >
-              Vyzkoušet zdarma na měsíc
+              Získat Early Access
             </Link>
 
             {/* Features */}
             <div className="border-t border-white/10 pt-8">
-              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-5 text-center">Co je v ceně</p>
+              <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-5 text-center">Co získáte</p>
               <div className="grid sm:grid-cols-2 gap-3">
                 {[
                   'Hodnocení hráčů po zápase',
@@ -898,6 +1014,7 @@ export default function Home() {
                   'Detailní statistiky výkonnosti',
                   'Export statistik do CSV',
                   'Odznáčky a ocenění',
+                  'Vlastní týmový web a web builder',
                 ].map((f) => (
                   <div key={f} className="flex items-start gap-2.5">
                     <svg className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -932,7 +1049,7 @@ export default function Home() {
             viewport={{ once: true, amount: 0.3 }}
             transition={{ duration: 0.5, delay: 0.15 }}
           >
-            Zdarma, bez závazků, bez kreditní karty. Pro celý tým.
+            Bez závazků, pro celý tým. Buďte mezi prvními, kdo to vyzkouší.
           </motion.p>
           <motion.div
             className="mt-8"
@@ -945,7 +1062,7 @@ export default function Home() {
               href="/register"
               className="inline-flex items-center gap-2 px-10 py-5 rounded-full bg-accent text-black font-bold text-lg animate-glow-pulse hover:bg-accent-light transition-colors"
             >
-              Registrovat tým zdarma
+              Registrovat tým
               <ArrowRight className="w-5 h-5" />
             </Link>
           </motion.div>
