@@ -315,13 +315,13 @@ interface AttendanceStat {
   matchCount: number;
 }
 
-type Tab = 'dashboard' | 'manage' | 'vote' | 'leaderboard' | 'canadian' | 'calendar' | 'taktika' | 'fanousci';
+type Tab = 'dashboard' | 'manage' | 'matches' | 'vote' | 'leaderboard' | 'canadian' | 'calendar' | 'taktika' | 'fanousci';
 type OverviewCardId = 'lastMatch' | 'upcomingEvents' | 'teamForm';
 type OverviewCardSize = 'small' | 'wide' | 'full';
 type OverviewCardLayoutItem = { id: OverviewCardId; order: number; size: OverviewCardSize; visible: boolean };
 type TeamOverviewLayout = { version: 1; cards: OverviewCardLayoutItem[] };
 
-const DEFAULT_TAB_ORDER: Tab[] = ['dashboard', 'manage', 'vote', 'leaderboard', 'canadian', 'calendar', 'taktika', 'fanousci'];
+const DEFAULT_TAB_ORDER: Tab[] = ['dashboard', 'manage', 'matches', 'vote', 'leaderboard', 'canadian', 'calendar', 'taktika', 'fanousci'];
 const OVERVIEW_CARD_IDS: OverviewCardId[] = ['lastMatch', 'upcomingEvents', 'teamForm'];
 const DEFAULT_OVERVIEW_LAYOUT: TeamOverviewLayout = {
   version: 1,
@@ -334,7 +334,8 @@ const DEFAULT_OVERVIEW_LAYOUT: TeamOverviewLayout = {
 
 function tabLabel(tab: Tab): string {
   if (tab === 'dashboard') return 'Přehled';
-  if (tab === 'manage') return 'Hráči a zápasy';
+  if (tab === 'manage') return 'Hráči';
+  if (tab === 'matches') return 'Zápasy';
   if (tab === 'vote') return 'Ohodnotit';
   if (tab === 'leaderboard') return 'Žebříček';
   if (tab === 'canadian') return 'Kanadské bodování';
@@ -1039,7 +1040,7 @@ function HodnoceniHracuContent() {
   const [dashboardCardsLoading, setDashboardCardsLoading] = useState(true);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [tab, setTab] = useState<Tab>(
-    tabParam === 'dashboard' || tabParam === 'calendar' || tabParam === 'vote' || tabParam === 'leaderboard' || tabParam === 'canadian' || tabParam === 'taktika' || tabParam === 'fanousci'
+    tabParam === 'dashboard' || tabParam === 'matches' || tabParam === 'calendar' || tabParam === 'vote' || tabParam === 'leaderboard' || tabParam === 'canadian' || tabParam === 'taktika' || tabParam === 'fanousci'
       ? tabParam as Tab
       : 'dashboard'
   );
@@ -1204,7 +1205,7 @@ function HodnoceniHracuContent() {
 
   useEffect(() => {
     const t = searchParams.get('tab');
-    if (t === 'dashboard' || t === 'calendar' || t === 'vote' || t === 'leaderboard' || t === 'canadian' || t === 'taktika' || t === 'fanousci') setTab(t as Tab);
+    if (t === 'dashboard' || t === 'matches' || t === 'calendar' || t === 'vote' || t === 'leaderboard' || t === 'canadian' || t === 'taktika' || t === 'fanousci') setTab(t as Tab);
   }, [searchParams]);
 
   useEffect(() => {
@@ -3165,7 +3166,7 @@ function HodnoceniHracuContent() {
         )}
 
         {tab === 'manage' && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
+          <div className="max-w-2xl">
             <div className="glass-card rounded-2xl p-4 sm:p-6">
               <h2 className="text-lg font-semibold text-foreground mb-3">Hráči týmu ({players.length})</h2>
 
@@ -3237,7 +3238,11 @@ function HodnoceniHracuContent() {
               )}
               </>
             </div>
+          </div>
+        )}
 
+        {tab === 'matches' && (
+          <div className="max-w-2xl">
             <div className="glass-card rounded-2xl p-4 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <h2 className="text-base sm:text-lg font-semibold text-foreground">Zápasy</h2>
