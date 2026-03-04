@@ -242,6 +242,7 @@ interface Match {
   goalsFor?: number;
   goalsAgainst?: number;
   startTime?: string;
+  isHome?: boolean;
   matchRating?: number;
   /** Z hodnocení spoluhráčů a trenéra (nejvyšší průměr) */
   playerOfMatch?: { playerId: string; playerName: string } | null;
@@ -253,6 +254,7 @@ interface IcsImportCandidate {
   startTime: string;
   opponent: string;
   summary: string;
+  isHome: boolean;
   selected: boolean;
 }
 
@@ -589,6 +591,14 @@ function parseIcsImportCandidates(content: string, clubFilter: string): {
       continue;
     }
     const opponent = extractOpponentFromSummary(summary, clubFilter);
+    // Determine home/away: first team in summary = home team
+    const filterLower = normalizedFilter;
+    const summaryLower = summary.toLowerCase();
+    const clubPos = filterLower ? summaryLower.indexOf(filterLower) : -1;
+    // Find separator position (vs, -, :, –) to split home/away
+    const sepMatch = summaryLower.match(/\s+(vs\.?|v\.?|[-–—:])\s+/);
+    const sepPos = sepMatch ? summaryLower.indexOf(sepMatch[0]) : summaryLower.length / 2;
+    const isHome = clubPos >= 0 && clubPos < sepPos;
     const uid = (ev.UID || `${parsed.date}-${parsed.startTime}-${summary}`).trim();
     candidates.push({
       uid,
@@ -596,6 +606,7 @@ function parseIcsImportCandidates(content: string, clubFilter: string): {
       startTime: parsed.startTime,
       opponent,
       summary: summary || `${parsed.date} ${parsed.startTime}`,
+      isHome,
       selected: true,
     });
   }
@@ -1954,6 +1965,17 @@ function HodnoceniHracuContent() {
       for (const candidate of selected) {
         const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.trim().toLowerCase()}`;
         if (existing.has(key)) {
+          // Update isHome on existing match if missing
+          const existingMatch = matches.find(
+            (m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}` === key && m.isHome == null
+          );
+          if (existingMatch) {
+            await fetch(`/api/teams/${teamId}/matches/${existingMatch.id}`, {
+              method: 'PATCH',
+              headers: headers(),
+              body: JSON.stringify({ isHome: candidate.isHome }),
+            });
+          }
           skipped += 1;
           continue;
         }
@@ -1964,6 +1986,7 @@ function HodnoceniHracuContent() {
             date: candidate.date,
             startTime: candidate.startTime,
             opponent: candidate.opponent || undefined,
+            isHome: candidate.isHome,
           }),
         });
         if (res.ok) {
@@ -2133,6 +2156,17 @@ function HodnoceniHracuContent() {
       for (const candidate of selected) {
         const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.trim().toLowerCase()}`;
         if (existingMatches.has(key)) {
+          // Update isHome on existing match if missing
+          const existingMatch = matches.find(
+            (m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}` === key && m.isHome == null
+          );
+          if (existingMatch) {
+            await fetch(`/api/teams/${teamId}/matches/${existingMatch.id}`, {
+              method: 'PATCH',
+              headers: headers(),
+              body: JSON.stringify({ isHome: candidate.isHome }),
+            });
+          }
           skipped += 1;
           continue;
         }
@@ -2145,6 +2179,7 @@ function HodnoceniHracuContent() {
             startTime: candidate.startTime,
             opponent: candidate.opponent || undefined,
             name: venueInfo,
+            isHome: candidate.isHome,
           }),
         });
         if (res.ok) {
@@ -2310,6 +2345,17 @@ function HodnoceniHracuContent() {
       for (const candidate of selected) {
         const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.trim().toLowerCase()}`;
         if (existingMatchSet.has(key)) {
+          // Update isHome on existing match if missing
+          const existingMatch = matches.find(
+            (m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}` === key && m.isHome == null
+          );
+          if (existingMatch) {
+            await fetch(`/api/teams/${teamId}/matches/${existingMatch.id}`, {
+              method: 'PATCH',
+              headers: headers(),
+              body: JSON.stringify({ isHome: candidate.isHome }),
+            });
+          }
           skipped += 1;
           continue;
         }
@@ -2324,6 +2370,7 @@ function HodnoceniHracuContent() {
             startTime: candidate.startTime,
             opponent: candidate.opponent || undefined,
             name: location,
+            isHome: candidate.isHome,
           }),
         });
         if (res.ok) {
@@ -3560,6 +3607,13 @@ function HodnoceniHracuContent() {
                         <span className="text-foreground min-w-0">
                           <span className="block">
                             {formatEventDateTime(m.date, m.startTime)}
+                            {m.isHome != null && (
+                              <span className={`inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded mx-1.5 ${
+                                m.isHome ? 'bg-green-500/15 text-green-400' : 'bg-orange-500/15 text-orange-400'
+                              }`}>
+                                {m.isHome ? 'Doma' : 'Venku'}
+                              </span>
+                            )}
                             {m.opponent && ` vs ${m.opponent}`}
                             {scoreText && <span className="ml-2 text-blue-400 font-semibold">{scoreText}</span>}
                           </span>

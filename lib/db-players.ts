@@ -26,6 +26,7 @@ export interface Match {
   goalsAgainst?: number;
   startTime?: string;
   scoredAt?: string;
+  isHome?: boolean;
   createdAt: string;
 }
 
@@ -58,6 +59,7 @@ const mapMatch = (row: any): Match => ({
   goalsAgainst: row.goals_against,
   startTime: row.start_time || undefined,
   scoredAt: row.scored_at || undefined,
+  isHome: row.is_home ?? undefined,
   createdAt: row.created_at,
 });
 
@@ -152,30 +154,44 @@ export const dbPlayers = {
       result?: string,
       goalsFor?: number,
       goalsAgainst?: number,
-      startTime?: string
+      startTime?: string,
+      isHome?: boolean
     ): Promise<Match> => {
-      const { data, error } = await client!
+      const row: Record<string, unknown> = {
+        team_id: teamId,
+        date,
+        opponent: opponent?.trim() || null,
+        name: name?.trim() || null,
+        result: result?.trim() || null,
+        goals_for: goalsFor ?? null,
+        goals_against: goalsAgainst ?? null,
+        start_time: (startTime?.trim() && /^\d{1,2}:\d{2}$/.test(startTime.trim())) ? startTime.trim() : null,
+        scored_at: (goalsFor != null && goalsAgainst != null) ? new Date().toISOString() : null,
+      };
+      if (isHome != null) row.is_home = isHome;
+      let { data, error } = await client!
         .from('matches')
-        .insert({
-          team_id: teamId,
-          date,
-          opponent: opponent?.trim() || null,
-          name: name?.trim() || null,
-          result: result?.trim() || null,
-          goals_for: goalsFor ?? null,
-          goals_against: goalsAgainst ?? null,
-          start_time: (startTime?.trim() && /^\d{1,2}:\d{2}$/.test(startTime.trim())) ? startTime.trim() : null,
-          scored_at: (goalsFor != null && goalsAgainst != null) ? new Date().toISOString() : null,
-        })
+        .insert(row)
         .select()
         .single();
+      // Graceful fallback: if is_home column doesn't exist yet, retry without it
+      if (error && isHome != null && error.message?.includes('is_home')) {
+        delete row.is_home;
+        const retry = await client!
+          .from('matches')
+          .insert(row)
+          .select()
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
       if (error) throw new Error(error.message);
       return mapMatch(data);
     },
     update: async (
       matchId: string,
       teamId: string,
-      updates: { result?: string; goalsFor?: number; goalsAgainst?: number }
+      updates: { result?: string; goalsFor?: number; goalsAgainst?: number; isHome?: boolean }
     ): Promise<Match | null> => {
       const toUpdate: Record<string, unknown> = {};
       if ('result' in updates) toUpdate.result = (updates.result ?? '').trim() || null;
@@ -184,14 +200,29 @@ export const dbPlayers = {
       if ('goalsFor' in updates || 'goalsAgainst' in updates) {
         toUpdate.scored_at = new Date().toISOString();
       }
+      if ('isHome' in updates) toUpdate.is_home = updates.isHome ?? null;
       if (Object.keys(toUpdate).length === 0) return null;
-      const { data, error } = await client!
+      let { data, error } = await client!
         .from('matches')
         .update(toUpdate)
         .eq('id', matchId)
         .eq('team_id', teamId)
         .select()
         .single();
+      // Graceful fallback: if is_home column doesn't exist yet, retry without it
+      if (error && 'is_home' in toUpdate && error.message?.includes('is_home')) {
+        delete toUpdate.is_home;
+        if (Object.keys(toUpdate).length === 0) return null;
+        const retry = await client!
+          .from('matches')
+          .update(toUpdate)
+          .eq('id', matchId)
+          .eq('team_id', teamId)
+          .select()
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
       if (error) throw new Error(error.message);
       return data ? mapMatch(data) : null;
     },
