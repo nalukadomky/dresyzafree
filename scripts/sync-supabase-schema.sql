@@ -248,3 +248,6 @@ CREATE INDEX IF NOT EXISTS idx_match_cards_match ON match_cards(match_id);
 ALTER TABLE match_cards ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all for match_cards" ON match_cards;
 CREATE POLICY "Allow all for match_cards" ON match_cards FOR ALL USING (true) WITH CHECK (true);
+
+-- home/away flag for matches
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS is_home BOOLEAN;

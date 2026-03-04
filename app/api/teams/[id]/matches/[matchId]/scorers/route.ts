@@ -13,11 +13,12 @@ export async function GET(
     const matches = await dbPlayers.matches.getByTeamId(params.id);
     const match = matches.find((m) => m.id === params.matchId);
     if (!match) return NextResponse.json({ error: 'Zápas nenalezen' }, { status: 404 });
-    const [scorers, assists, cards] = await Promise.all([
+    const [scorers, assists] = await Promise.all([
       dbPlayers.matchScorers.getScorers(params.matchId),
       dbPlayers.matchScorers.getAssists(params.matchId),
-      dbPlayers.matchScorers.getCards(params.matchId),
     ]);
+    let cards: { playerId: string; cardType: string }[] = [];
+    try { cards = await dbPlayers.matchScorers.getCards(params.matchId); } catch { /* match_cards table may not exist yet */ }
     return NextResponse.json({ scorers, assists, cards });
   } catch (error: unknown) {
     return NextResponse.json(
@@ -50,7 +51,7 @@ export async function PATCH(
       .filter((x: unknown) => x && typeof x === 'object' && typeof (x as { playerId?: string }).playerId === 'string' && ['yellow', 'red'].includes((x as { cardType?: string }).cardType || ''))
       .map((x: { playerId: string; cardType: string }) => ({ playerId: x.playerId, cardType: x.cardType }));
     await dbPlayers.matchScorers.setScorersAndAssists(params.matchId, params.id, validScorers, validAssists);
-    await dbPlayers.matchScorers.setCards(params.matchId, params.id, validCards);
+    try { await dbPlayers.matchScorers.setCards(params.matchId, params.id, validCards); } catch { /* match_cards table may not exist yet */ }
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json(

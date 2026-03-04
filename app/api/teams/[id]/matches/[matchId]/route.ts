@@ -14,11 +14,12 @@ export async function PATCH(
     if (user.type === 'team' && user.id !== params.id) {
       return NextResponse.json({ error: 'Nemáte oprávnění' }, { status: 403 });
     }
-    const { result, goalsFor, goalsAgainst } = await request.json();
-    const updates: { result?: string; goalsFor?: number; goalsAgainst?: number } = {};
+    const { result, goalsFor, goalsAgainst, isHome } = await request.json();
+    const updates: { result?: string; goalsFor?: number; goalsAgainst?: number; isHome?: boolean } = {};
     if (result !== undefined) updates.result = result;
     if (goalsFor !== undefined) updates.goalsFor = goalsFor;
     if (goalsAgainst !== undefined) updates.goalsAgainst = goalsAgainst;
+    if (typeof isHome === 'boolean') updates.isHome = isHome;
     const match = await dbPlayers.matches.update(params.matchId, params.id, updates);
     if (!match) {
       return NextResponse.json({ error: 'Žádné změny' }, { status: 400 });

@@ -50,7 +50,7 @@ export async function POST(
     if (user.type === 'team' && user.id !== params.id) {
       return NextResponse.json({ error: 'Nemáte oprávnění' }, { status: 403 });
     }
-    const { date, opponent, name, result, goalsFor, goalsAgainst, startTime } = await request.json();
+    const { date, opponent, name, result, goalsFor, goalsAgainst, startTime, isHome } = await request.json();
     if (!date) {
       return NextResponse.json({ error: 'Datum je povinné' }, { status: 400 });
     }
@@ -62,7 +62,8 @@ export async function POST(
       result,
       goalsFor,
       goalsAgainst,
-      startTime
+      startTime,
+      typeof isHome === 'boolean' ? isHome : undefined
     );
     return NextResponse.json({ match });
   } catch (error: any) {
