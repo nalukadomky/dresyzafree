@@ -14,6 +14,7 @@ const RESERVED_PREFIXES = [
   'login',
   'register',
   't',
+  'test',
   'udalost',
   '_next',
   'favicon.ico',

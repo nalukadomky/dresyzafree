@@ -23,6 +23,9 @@ Překopíruj níže do Codexu (nebo jako reference).
 | `SUPABASE_DATABASE_URL` | Supabase → Settings → Database → Connection string | `postgresql://postgres:[HESLO]@db.xxx.supabase.co:5432/postgres` |
 | `SUPABASE_DB_PASSWORD` | Heslo DB z Supabase | Pro skripty, které skládají connection string |
 | `MIGRATE_SECRET` | Vlastní tajná hodnota | Ochrana endpointu `/api/admin/migrate-event-note?key=...` |
+| `NEXT_PUBLIC_GOOGLE_API_KEY` | Google Cloud Console → APIs & Services → Credentials | API klíč pro Maps, Places apod. |
+| `GEMINI_IMAGE_API_KEY` | Google Cloud Console (stejný klíč; zapni Generative Language API + Imagen) | Generování obrázků přes Gemini / Imagen |
+| `GOOGLE_AI_STUDIO_API_KEY` | Google AI Studio (aistudio.google.com) | API klíč pro Gemini (text) |
 
 ---
 
@@ -41,6 +44,13 @@ JWT_SECRET=vytvorte-silne-nahodne-heslo-min-32-znaku
 # SUPABASE_ACCESS_TOKEN=sbp_xxxx
 # SUPABASE_DATABASE_URL=postgresql://postgres:HESLO@db.xxx.supabase.co:5432/postgres
 # MIGRATE_SECRET=migrate-event-note-2024
+
+# Google Cloud Console (Maps + Gemini Image Generation)
+# NEXT_PUBLIC_GOOGLE_API_KEY=AIzaSy...
+# GEMINI_IMAGE_API_KEY=AIzaSy...   (stejný klíč; pro generování obrázků)
+
+# Google AI Studio (Gemini)
+# GOOGLE_AI_STUDIO_API_KEY=AIzaSy...
 ```
 
 ---

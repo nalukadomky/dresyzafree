@@ -1166,6 +1166,14 @@ function HodnoceniHracuContent() {
   const [fanVoteLoading, setFanVoteLoading] = useState(false);
   const [fanVoteLoaded, setFanVoteLoaded] = useState(false);
 
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 10);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   const headers = () => ({
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
@@ -2675,7 +2683,7 @@ function HodnoceniHracuContent() {
         </div>
       )}
 
-      <div className="fixed top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 flex justify-between items-center z-20">
+      <div className={`fixed top-0 left-0 right-0 flex justify-between items-center z-20 px-3 py-3 sm:px-4 sm:py-4 transition-all duration-300 ${scrolled ? 'bg-background/80 backdrop-blur-md shadow-sm' : ''}`}>
         <div className="flex items-center gap-3">
           <Link
             href="/dashboard"
