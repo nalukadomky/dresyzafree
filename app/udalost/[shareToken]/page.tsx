@@ -21,6 +21,7 @@ interface EventData {
   opponent?: string;
   startTime?: string;
   note?: string;
+  votingDeadline?: string;
   attendanceClosed?: boolean;
 }
 
@@ -143,6 +144,12 @@ export default function UdalostPage() {
             {event.opponent && ` vs ${event.opponent}`}
           </p>
           {event.note && <p className="text-foreground/70 text-sm mt-2">{event.note}</p>}
+          {!event.attendanceClosed && event.votingDeadline && (
+            <p className="text-amber-400/80 text-sm mt-2">
+              Hlasování do: {new Date(event.votingDeadline).toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', month: 'long' })}{' '}
+              {new Date(event.votingDeadline).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
         </div>
 
         {/* Formulář účasti */}
@@ -152,7 +159,9 @@ export default function UdalostPage() {
               <div className="text-center">
                 <p className="text-amber-400 font-medium text-lg">Odpovědi byly uzavřeny</p>
                 <p className="text-foreground/70 mt-1 text-sm">
-                  Účast se uzavírá den před událostí do půlnoci. Účast již nelze měnit.
+                  {event.votingDeadline
+                    ? `Hlasování bylo uzavřeno ${new Date(event.votingDeadline).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long' })} v ${new Date(event.votingDeadline).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}. Účast již nelze měnit.`
+                    : 'Účast se uzavírá den před událostí do půlnoci. Účast již nelze měnit.'}
                 </p>
               </div>
               <div>

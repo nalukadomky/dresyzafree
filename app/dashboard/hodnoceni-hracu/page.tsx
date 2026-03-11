@@ -660,6 +660,7 @@ function MatchResultPopup({
   match: Match; teamId: string; token: string; teamLabel: string; opponentLabel: string;
   players: { id: string; name: string }[]; onSaved: () => void; onClose: () => void;
 }) {
+  const [editOpponent, setEditOpponent] = useState(match.opponent || '');
   const [goalsFor, setGoalsFor] = useState(match.goalsFor != null ? String(match.goalsFor) : '');
   const [goalsAgainst, setGoalsAgainst] = useState(match.goalsAgainst != null ? String(match.goalsAgainst) : '');
   const [matchRating, setMatchRating] = useState(match.matchRating ?? 5);
@@ -714,6 +715,10 @@ function MatchResultPopup({
     setSaveError('');
     try {
       const body: Record<string, unknown> = { matchRating };
+      // Send opponent if changed
+      if (editOpponent.trim() !== (match.opponent || '')) {
+        body.opponent = editOpponent.trim();
+      }
       const gf = goalsFor !== '' ? parseInt(goalsFor, 10) : undefined;
       const ga = goalsAgainst !== '' ? parseInt(goalsAgainst, 10) : undefined;
       if (gf != null && !isNaN(gf)) body.goalsFor = gf;
@@ -768,11 +773,20 @@ function MatchResultPopup({
         <div className="glass-card rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-2xl border border-border max-h-[85vh] overflow-y-auto pointer-events-auto" onClick={e => e.stopPropagation()}>
           {/* Header */}
           <div className="flex items-center justify-between mb-5">
-            <div>
-              <p className="text-foreground font-semibold">{match.opponent ? `vs ${match.opponent}` : 'Zápas'}</p>
+            <div className="min-w-0 flex-1 mr-3">
+              <div className="flex items-center gap-2">
+                <span className="text-foreground/50 text-sm shrink-0">vs</span>
+                <input
+                  type="text"
+                  value={editOpponent}
+                  onChange={(e) => setEditOpponent(e.target.value)}
+                  placeholder="Soupeř"
+                  className="text-foreground font-semibold bg-transparent border-b border-transparent hover:border-foreground/20 focus:border-blue-400 focus:outline-none transition-colors w-full min-w-0 py-0.5"
+                />
+              </div>
               <p className="text-foreground/50 text-sm">{formatEventDateTime(match.date, match.startTime)}</p>
             </div>
-            <button onClick={onClose} className="text-foreground/30 hover:text-foreground text-xl leading-none">✕</button>
+            <button onClick={onClose} className="text-foreground/30 hover:text-foreground text-xl leading-none shrink-0">✕</button>
           </div>
 
           {/* Score */}
@@ -1130,6 +1144,16 @@ function HodnoceniHracuContent() {
   const [strahovskaParsing, setStrahovskaParsing] = useState(false);
   const [strahovskaImporting, setStrahovskaImporting] = useState(false);
 
+  // Re-import popup pro duplicitní zápasy
+  const [reimportPopup, setReimportPopup] = useState<{
+    duplicates: { matchId: string; candidate: StrahovskaImportCandidate | IcsImportCandidate | PsmfImportCandidate }[];
+    newCreated: number;
+    eventsCreated: number;
+    failed: number;
+    source: 'strahovska' | 'ics' | 'psmf';
+  } | null>(null);
+  const [reimportProcessing, setReimportProcessing] = useState(false);
+
   const [events, setEvents] = useState<Event[]>([]);
   const [ucastModal, setUcastModal] = useState<Event | null>(null);
   const [ucastModalFinalized, setUcastModalFinalized] = useState(false);
@@ -1152,6 +1176,8 @@ function HodnoceniHracuContent() {
   const [newEventOpponent, setNewEventOpponent] = useState('');
   const [newEventNote, setNewEventNote] = useState('');
   const [newEventCustomName, setNewEventCustomName] = useState('');
+  const [newEventVotingDeadline, setNewEventVotingDeadline] = useState('');
+  const [newEventDeadlineMode, setNewEventDeadlineMode] = useState<'default' | 'event_start' | 'custom'>('default');
   const [eventTypeOpen, setEventTypeOpen] = useState(false);
   const [addingEvent, setAddingEvent] = useState(false);
   const [attendanceStats, setAttendanceStats] = useState<AttendanceStat[]>([]);
@@ -1438,6 +1464,15 @@ function HodnoceniHracuContent() {
     }
     setAddingEvent(true);
     const resolvedEventType = newEventType === 'custom' ? newEventCustomName.trim() : newEventType;
+    // Compute votingDeadline based on selected mode
+    let resolvedVotingDeadline: string | undefined;
+    if (newEventDeadlineMode === 'event_start') {
+      // Lock at event start time
+      resolvedVotingDeadline = `${newEventDate}T${time}`;
+    } else if (newEventDeadlineMode === 'custom' && newEventVotingDeadline) {
+      resolvedVotingDeadline = newEventVotingDeadline;
+    }
+    // 'default' mode → no votingDeadline → uses default logic (day before at midnight)
     try {
       const res = await fetch(`/api/teams/${teamId}/events`, {
         method: 'POST',
@@ -1449,6 +1484,7 @@ function HodnoceniHracuContent() {
           opponent: (newEventType !== 'training' ? newEventOpponent : undefined)?.trim() || undefined,
           startTime: time,
           note: newEventNote.trim() || undefined,
+          votingDeadline: resolvedVotingDeadline,
         }),
       });
       if (res.ok) {
@@ -1467,6 +1503,8 @@ function HodnoceniHracuContent() {
         setNewEventOpponent('');
         setNewEventNote('');
         setNewEventCustomName('');
+        setNewEventVotingDeadline('');
+        setNewEventDeadlineMode('default');
         setNewEventType('training');
         await fetchEvents();
         await fetchAttendanceStats();
@@ -1715,8 +1753,11 @@ function HodnoceniHracuContent() {
     e.preventDefault();
     if (!newPlayerName.trim() || !teamId || !token) return;
     const jerseyNumber = newPlayerJerseyNumber.trim() ? Number(newPlayerJerseyNumber.trim()) : null;
-    if (jerseyNumber != null && (!Number.isInteger(jerseyNumber) || jerseyNumber < 1 || jerseyNumber > 99)) {
-      toast.warning('Číslo dresu musí být celé číslo (1-99).');
+    if (jerseyNumber != null && (!Number.isInteger(jerseyNumber) || jerseyNumber < 0 || jerseyNumber > 99)) {
+      toast.warning('Číslo dresu musí být celé číslo (0-99).');
+      return;
+    }
+    if (jerseyNumber === 0 && !window.confirm('Opravdu chcete nastavit číslo dresu 0?')) {
       return;
     }
     setAddingPlayer(true);
@@ -1762,10 +1803,13 @@ function HodnoceniHracuContent() {
     const raw = (playerJerseyInputs[playerId] || '').trim();
     const parsedNumber = raw ? Number(raw) : null;
     const hasValidNumber =
-      parsedNumber != null && Number.isInteger(parsedNumber) && parsedNumber >= 1 && parsedNumber <= 99;
+      parsedNumber != null && Number.isInteger(parsedNumber) && parsedNumber >= 0 && parsedNumber <= 99;
     if (raw && !hasValidNumber) {
-      setPlayerJerseyFeedback('error:Číslo dresu musí být celé číslo v rozsahu 1-99.');
+      setPlayerJerseyFeedback('error:Číslo dresu musí být celé číslo v rozsahu 0-99.');
       setTimeout(() => setPlayerJerseyFeedback(null), 3000);
+      return;
+    }
+    if (parsedNumber === 0 && !window.confirm('Opravdu chcete nastavit číslo dresu 0?')) {
       return;
     }
     const jerseyNumber = hasValidNumber ? parsedNumber : null;
@@ -1914,7 +1958,13 @@ function HodnoceniHracuContent() {
     setIcsParsing(true);
     setIcsFeedback(null);
     try {
-      const content = await file.text();
+      // ICS soubory z FAČR mohou být kódovány v windows-1250 místo UTF-8.
+      // Zkusíme UTF-8 a pokud obsahuje replacement character (�), použijeme windows-1250.
+      const buf = await file.arrayBuffer();
+      let content = new TextDecoder('utf-8').decode(buf);
+      if (content.includes('\uFFFD')) {
+        content = new TextDecoder('windows-1250').decode(buf);
+      }
       const parsed = parseIcsImportCandidates(content, icsClubFilter);
       setImportSource('ics');
       setIcsCandidates(parsed.candidates);
@@ -1959,35 +2009,36 @@ function HodnoceniHracuContent() {
     setIcsImporting(true);
     setIcsFeedback(null);
     try {
-      const existing = new Set(
-        matches.map((m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`)
-      );
+      // Detekce duplicit podle date|startTime (bez opponent)
+      const existingMatchMap = new Map<string, string>();
+      for (const m of matches) {
+        existingMatchMap.set(`${m.date}|${(m.startTime || '').trim()}`, m.id);
+      }
       const existingEvs = new Set(
-        events.map((e) => `${e.date}|${(e.startTime || '').trim()}|${(e.opponent || '').trim().toLowerCase()}`)
+        events.map((e) => `${e.date}|${(e.startTime || '').trim()}`)
       );
+
+      const newCandidates: IcsImportCandidate[] = [];
+      const duplicateCandidates: { matchId: string; candidate: IcsImportCandidate }[] = [];
+
+      for (const candidate of selected) {
+        const key = `${candidate.date}|${candidate.startTime}`;
+        const existingId = existingMatchMap.get(key);
+        if (existingId) {
+          duplicateCandidates.push({ matchId: existingId, candidate });
+        } else {
+          newCandidates.push(candidate);
+        }
+      }
+
+      // Import nových zápasů
       let created = 0;
       let eventsCreated = 0;
-      let skipped = 0;
       let failed = 0;
       const createdKeys: string[] = [];
 
-      for (const candidate of selected) {
-        const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.trim().toLowerCase()}`;
-        if (existing.has(key)) {
-          // Update isHome on existing match if missing
-          const existingMatch = matches.find(
-            (m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}` === key && m.isHome == null
-          );
-          if (existingMatch) {
-            await fetch(`/api/teams/${teamId}/matches/${existingMatch.id}`, {
-              method: 'PATCH',
-              headers: headers(),
-              body: JSON.stringify({ isHome: candidate.isHome }),
-            });
-          }
-          skipped += 1;
-          continue;
-        }
+      for (const candidate of newCandidates) {
+        const key = `${candidate.date}|${candidate.startTime}`;
         const res = await fetch(`/api/teams/${teamId}/matches`, {
           method: 'POST',
           headers: headers(),
@@ -2000,10 +2051,9 @@ function HodnoceniHracuContent() {
         });
         if (res.ok) {
           created += 1;
-          existing.add(key);
+          existingMatchMap.set(key, 'new');
           createdKeys.push(key);
 
-          // Auto-create corresponding event
           if (!existingEvs.has(key)) {
             const evRes = await fetch(`/api/teams/${teamId}/events`, {
               method: 'POST',
@@ -2027,23 +2077,34 @@ function HodnoceniHracuContent() {
         }
       }
 
-      const latestMatches = await fetchMatches();
-      await fetchEvents();
-      if (importAnimationTimeoutRef.current) {
-        clearTimeout(importAnimationTimeoutRef.current);
+      // Animace pro nově importované
+      if (createdKeys.length > 0) {
+        const latestMatches = await fetchMatches();
+        await fetchEvents();
+        if (importAnimationTimeoutRef.current) clearTimeout(importAnimationTimeoutRef.current);
+        const importedIds = latestMatches
+          .filter((m) => createdKeys.includes(`${m.date}|${(m.startTime || '').trim()}`))
+          .map((m) => m.id);
+        setRecentlyImportedMatchIds(importedIds);
+        if (importedIds.length > 0) {
+          importAnimationTimeoutRef.current = setTimeout(() => setRecentlyImportedMatchIds([]), 2200);
+        }
       }
-      const importedIds = latestMatches
-        .filter((m) => createdKeys.includes(`${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`))
-        .map((m) => m.id);
-      setRecentlyImportedMatchIds(importedIds);
-      if (importedIds.length > 0) {
-        importAnimationTimeoutRef.current = setTimeout(() => {
-          setRecentlyImportedMatchIds([]);
-        }, 2200);
+
+      // Pokud existují duplicity → otevřít popup
+      if (duplicateCandidates.length > 0) {
+        setReimportPopup({
+          duplicates: duplicateCandidates,
+          newCreated: created,
+          eventsCreated,
+          failed,
+          source: 'ics',
+        });
+      } else {
+        resetIcsImportSession({ keepFeedback: true });
+        setImportSource('none');
+        setIcsFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, chyby: ${failed}.`);
       }
-      resetIcsImportSession({ keepFeedback: true });
-      setImportSource('none');
-      setIcsFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, přeskočeno (duplicitní): ${skipped}, chyby: ${failed}.`);
     } finally {
       setIcsImporting(false);
     }
@@ -2150,35 +2211,36 @@ function HodnoceniHracuContent() {
     setPsmfImporting(true);
     setPsmfFeedback(null);
     try {
-      const existingMatches = new Set(
-        matches.map((m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`)
-      );
+      // Detekce duplicit podle date|startTime (bez opponent)
+      const existingMatchMap = new Map<string, string>();
+      for (const m of matches) {
+        existingMatchMap.set(`${m.date}|${(m.startTime || '').trim()}`, m.id);
+      }
       const existingEvents = new Set(
-        events.map((e) => `${e.date}|${(e.startTime || '').trim()}|${(e.opponent || '').trim().toLowerCase()}`)
+        events.map((e) => `${e.date}|${(e.startTime || '').trim()}`)
       );
+
+      const newCandidates: PsmfImportCandidate[] = [];
+      const duplicateCandidates: { matchId: string; candidate: PsmfImportCandidate }[] = [];
+
+      for (const candidate of selected) {
+        const key = `${candidate.date}|${candidate.startTime}`;
+        const existingId = existingMatchMap.get(key);
+        if (existingId) {
+          duplicateCandidates.push({ matchId: existingId, candidate });
+        } else {
+          newCandidates.push(candidate);
+        }
+      }
+
+      // Import nových zápasů
       let created = 0;
       let eventsCreated = 0;
-      let skipped = 0;
       let failed = 0;
       const createdKeys: string[] = [];
 
-      for (const candidate of selected) {
-        const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.trim().toLowerCase()}`;
-        if (existingMatches.has(key)) {
-          // Update isHome on existing match if missing
-          const existingMatch = matches.find(
-            (m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}` === key && m.isHome == null
-          );
-          if (existingMatch) {
-            await fetch(`/api/teams/${teamId}/matches/${existingMatch.id}`, {
-              method: 'PATCH',
-              headers: headers(),
-              body: JSON.stringify({ isHome: candidate.isHome }),
-            });
-          }
-          skipped += 1;
-          continue;
-        }
+      for (const candidate of newCandidates) {
+        const key = `${candidate.date}|${candidate.startTime}`;
         const venueInfo = candidate.venueName || candidate.venueAbbrev || undefined;
         const res = await fetch(`/api/teams/${teamId}/matches`, {
           method: 'POST',
@@ -2193,10 +2255,9 @@ function HodnoceniHracuContent() {
         });
         if (res.ok) {
           created += 1;
-          existingMatches.add(key);
+          existingMatchMap.set(key, 'new');
           createdKeys.push(key);
 
-          // Automaticky vytvořit i událost v kalendáři (pokud ještě neexistuje)
           if (!existingEvents.has(key)) {
             const evRes = await fetch(`/api/teams/${teamId}/events`, {
               method: 'POST',
@@ -2220,23 +2281,34 @@ function HodnoceniHracuContent() {
         }
       }
 
-      const latestMatches = await fetchMatches();
-      await fetchEvents();
-      if (importAnimationTimeoutRef.current) {
-        clearTimeout(importAnimationTimeoutRef.current);
+      // Animace pro nově importované
+      if (createdKeys.length > 0) {
+        const latestMatches = await fetchMatches();
+        await fetchEvents();
+        if (importAnimationTimeoutRef.current) clearTimeout(importAnimationTimeoutRef.current);
+        const importedIds = latestMatches
+          .filter((m) => createdKeys.includes(`${m.date}|${(m.startTime || '').trim()}`))
+          .map((m) => m.id);
+        setRecentlyImportedMatchIds(importedIds);
+        if (importedIds.length > 0) {
+          importAnimationTimeoutRef.current = setTimeout(() => setRecentlyImportedMatchIds([]), 2200);
+        }
       }
-      const importedIds = latestMatches
-        .filter((m) => createdKeys.includes(`${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`))
-        .map((m) => m.id);
-      setRecentlyImportedMatchIds(importedIds);
-      if (importedIds.length > 0) {
-        importAnimationTimeoutRef.current = setTimeout(() => {
-          setRecentlyImportedMatchIds([]);
-        }, 2200);
+
+      // Pokud existují duplicity → otevřít popup
+      if (duplicateCandidates.length > 0) {
+        setReimportPopup({
+          duplicates: duplicateCandidates,
+          newCreated: created,
+          eventsCreated,
+          failed,
+          source: 'psmf',
+        });
+      } else {
+        resetPsmfImportSession({ keepFeedback: true });
+        setImportSource('none');
+        setPsmfFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, chyby: ${failed}.`);
       }
-      resetPsmfImportSession({ keepFeedback: true });
-      setImportSource('none');
-      setPsmfFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, přeskočeno: ${skipped}, chyby: ${failed}.`);
     } finally {
       setPsmfImporting(false);
     }
@@ -2339,35 +2411,36 @@ function HodnoceniHracuContent() {
     setStrahovskaImporting(true);
     setStrahovskaFeedback(null);
     try {
-      const existingMatchSet = new Set(
-        matches.map((m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`)
-      );
+      // Detekce duplicit podle date|startTime (bez opponent — zachytí i opravené kódování)
+      const existingMatchMap = new Map<string, string>();
+      for (const m of matches) {
+        existingMatchMap.set(`${m.date}|${(m.startTime || '').trim()}`, m.id);
+      }
       const existingEventSet = new Set(
-        events.map((e) => `${e.date}|${(e.startTime || '').trim()}|${(e.opponent || '').trim().toLowerCase()}`)
+        events.map((e) => `${e.date}|${(e.startTime || '').trim()}`)
       );
+
+      const newCandidates: StrahovskaImportCandidate[] = [];
+      const duplicateCandidates: { matchId: string; candidate: StrahovskaImportCandidate }[] = [];
+
+      for (const candidate of selected) {
+        const key = `${candidate.date}|${candidate.startTime}`;
+        const existingId = existingMatchMap.get(key);
+        if (existingId) {
+          duplicateCandidates.push({ matchId: existingId, candidate });
+        } else {
+          newCandidates.push(candidate);
+        }
+      }
+
+      // Import nových zápasů
       let created = 0;
       let eventsCreated = 0;
-      let skipped = 0;
       let failed = 0;
       const createdKeys: string[] = [];
 
-      for (const candidate of selected) {
-        const key = `${candidate.date}|${candidate.startTime}|${candidate.opponent.trim().toLowerCase()}`;
-        if (existingMatchSet.has(key)) {
-          // Update isHome on existing match if missing
-          const existingMatch = matches.find(
-            (m) => `${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}` === key && m.isHome == null
-          );
-          if (existingMatch) {
-            await fetch(`/api/teams/${teamId}/matches/${existingMatch.id}`, {
-              method: 'PATCH',
-              headers: headers(),
-              body: JSON.stringify({ isHome: candidate.isHome }),
-            });
-          }
-          skipped += 1;
-          continue;
-        }
+      for (const candidate of newCandidates) {
+        const key = `${candidate.date}|${candidate.startTime}`;
         const location = candidate.fieldNumber
           ? `Strahov, hřiště č. ${candidate.fieldNumber}, Praha 6`
           : 'Strahov, Praha 6';
@@ -2384,7 +2457,7 @@ function HodnoceniHracuContent() {
         });
         if (res.ok) {
           created += 1;
-          existingMatchSet.add(key);
+          existingMatchMap.set(key, 'new');
           createdKeys.push(key);
 
           if (!existingEventSet.has(key)) {
@@ -2410,25 +2483,146 @@ function HodnoceniHracuContent() {
         }
       }
 
-      const latestMatches = await fetchMatches();
-      await fetchEvents();
-      if (importAnimationTimeoutRef.current) {
-        clearTimeout(importAnimationTimeoutRef.current);
+      // Animace pro nově importované
+      if (createdKeys.length > 0) {
+        const latestMatches = await fetchMatches();
+        await fetchEvents();
+        if (importAnimationTimeoutRef.current) clearTimeout(importAnimationTimeoutRef.current);
+        const importedIds = latestMatches
+          .filter((m) => createdKeys.includes(`${m.date}|${(m.startTime || '').trim()}`))
+          .map((m) => m.id);
+        setRecentlyImportedMatchIds(importedIds);
+        if (importedIds.length > 0) {
+          importAnimationTimeoutRef.current = setTimeout(() => setRecentlyImportedMatchIds([]), 2200);
+        }
       }
-      const importedIds = latestMatches
-        .filter((m) => createdKeys.includes(`${m.date}|${(m.startTime || '').trim()}|${(m.opponent || '').trim().toLowerCase()}`))
-        .map((m) => m.id);
-      setRecentlyImportedMatchIds(importedIds);
-      if (importedIds.length > 0) {
-        importAnimationTimeoutRef.current = setTimeout(() => {
-          setRecentlyImportedMatchIds([]);
-        }, 2200);
+
+      // Pokud existují duplicity → otevřít popup
+      if (duplicateCandidates.length > 0) {
+        setReimportPopup({
+          duplicates: duplicateCandidates,
+          newCreated: created,
+          eventsCreated,
+          failed,
+          source: 'strahovska',
+        });
+      } else {
+        resetStrahovskaImportSession({ keepFeedback: true });
+        setImportSource('none');
+        setStrahovskaFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, chyby: ${failed}.`);
       }
-      resetStrahovskaImportSession({ keepFeedback: true });
-      setImportSource('none');
-      setStrahovskaFeedback(`success:Import hotov. Přidáno: ${created} zápasů + ${eventsCreated} událostí, přeskočeno: ${skipped}, chyby: ${failed}.`);
     } finally {
       setStrahovskaImporting(false);
+    }
+  };
+
+  const handleReimportChoice = async (mode: 'fresh' | 'keep_scores' | 'skip') => {
+    if (!reimportPopup || !teamId || !token) return;
+    if (mode === 'skip') {
+      const src = reimportPopup.source;
+      const { newCreated, eventsCreated, failed } = reimportPopup;
+      const skipped = reimportPopup.duplicates.length;
+      setReimportPopup(null);
+      const msg = `success:Import hotov. Přidáno: ${newCreated} zápasů + ${eventsCreated} událostí, přeskočeno: ${skipped}, chyby: ${failed}.`;
+      if (src === 'strahovska') {
+        resetStrahovskaImportSession({ keepFeedback: true });
+        setImportSource('none');
+        setStrahovskaFeedback(msg);
+      } else if (src === 'psmf') {
+        resetPsmfImportSession({ keepFeedback: true });
+        setImportSource('none');
+        setPsmfFeedback(msg);
+      } else {
+        resetIcsImportSession({ keepFeedback: true });
+        setImportSource('none');
+        setIcsFeedback(msg);
+      }
+      return;
+    }
+    setReimportProcessing(true);
+    try {
+      // Najít odpovídající události podle date|startTime, abychom je mohli taky aktualizovat
+      const existingMatch = (id: string) => matches.find((m) => m.id === id);
+
+      let updated = 0;
+      for (const { matchId, candidate } of reimportPopup.duplicates) {
+        const oldMatch = existingMatch(matchId);
+        // Najít odpovídající událost (stejné datum + čas jako starý zápas)
+        const matchingEvent = oldMatch ? events.find(
+          (e) => e.date === oldMatch.date && (e.startTime || '').trim() === (oldMatch.startTime || '').trim()
+        ) : null;
+
+        if (mode === 'fresh') {
+          await fetch(`/api/teams/${teamId}/matches/${matchId}`, { method: 'DELETE', headers: headers() });
+          let location: string | undefined;
+          if (reimportPopup.source === 'strahovska') {
+            const sc = candidate as StrahovskaImportCandidate;
+            location = sc.fieldNumber ? `Strahov, hřiště č. ${sc.fieldNumber}, Praha 6` : 'Strahov, Praha 6';
+          } else if (reimportPopup.source === 'psmf') {
+            const pc = candidate as PsmfImportCandidate;
+            location = pc.venueName || pc.venueAbbrev || undefined;
+          }
+          const res = await fetch(`/api/teams/${teamId}/matches`, {
+            method: 'POST',
+            headers: headers(),
+            body: JSON.stringify({
+              date: candidate.date,
+              startTime: candidate.startTime,
+              opponent: candidate.opponent || undefined,
+              name: location,
+              isHome: candidate.isHome,
+            }),
+          });
+          if (res.ok) updated += 1;
+        } else {
+          const res = await fetch(`/api/teams/${teamId}/matches/${matchId}`, {
+            method: 'PATCH',
+            headers: headers(),
+            body: JSON.stringify({
+              opponent: candidate.opponent,
+              isHome: candidate.isHome,
+              date: candidate.date,
+              startTime: candidate.startTime,
+            }),
+          });
+          if (res.ok) updated += 1;
+        }
+
+        // Aktualizovat i odpovídající událost (opponent, date, startTime)
+        if (matchingEvent) {
+          await fetch(`/api/teams/${teamId}/events/${matchingEvent.id}`, {
+            method: 'PATCH',
+            headers: headers(),
+            body: JSON.stringify({
+              opponent: candidate.opponent,
+              date: candidate.date,
+              startTime: candidate.startTime,
+            }),
+          });
+        }
+      }
+      await fetchMatches();
+      await fetchEvents();
+      const src = reimportPopup.source;
+      const { newCreated, eventsCreated, failed } = reimportPopup;
+      const actionLabel = mode === 'fresh' ? 'přeimportováno' : 'aktualizováno';
+      setReimportPopup(null);
+      const msg = `success:Import hotov. Přidáno: ${newCreated} nových + ${eventsCreated} událostí, ${actionLabel}: ${updated}, chyby: ${failed}.`;
+      if (src === 'strahovska') {
+        resetStrahovskaImportSession({ keepFeedback: true });
+        setImportSource('none');
+        setStrahovskaFeedback(msg);
+      } else if (src === 'psmf') {
+        resetPsmfImportSession({ keepFeedback: true });
+        setImportSource('none');
+        setPsmfFeedback(msg);
+      } else {
+        resetIcsImportSession({ keepFeedback: true });
+        setImportSource('none');
+        setIcsFeedback(msg);
+      }
+    } finally {
+      setReimportProcessing(false);
     }
   };
 
@@ -4023,6 +4217,13 @@ function HodnoceniHracuContent() {
                         setNewEventOpponent(match.opponent || '');
                         if (match.startTime) setNewEventStartTime(match.startTime);
                       }
+                      // Auto-předvyplnit custom deadline na den před o půlnoci, pokud je vybrán režim 'custom'
+                      if (date && newEventDeadlineMode === 'custom' && !newEventVotingDeadline) {
+                        const d = new Date(date + 'T00:00:00');
+                        d.setDate(d.getDate() - 1);
+                        const pad = (n: number) => n.toString().padStart(2, '0');
+                        setNewEventVotingDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00`);
+                      }
                     }}
                     required
                   />
@@ -4086,15 +4287,49 @@ function HodnoceniHracuContent() {
                     placeholder="Poznámka (volitelně)"
                     className="h-10 w-full px-4 rounded-lg glass-input text-foreground placeholder-white/50"
                   />
+                  <div className="flex flex-wrap items-center gap-2 w-full">
+                    <label className="text-foreground/60 text-sm whitespace-nowrap">Uzavření hlasování:</label>
+                    <div className="flex items-center gap-1">
+                      {([
+                        { value: 'default', label: 'Den před (půlnoc)' },
+                        { value: 'event_start', label: 'Začátek události' },
+                        { value: 'custom', label: 'Vlastní' },
+                      ] as const).map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setNewEventDeadlineMode(opt.value);
+                            if (opt.value !== 'custom') setNewEventVotingDeadline('');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            newEventDeadlineMode === opt.value
+                              ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/40'
+                              : 'text-foreground/50 hover:text-foreground/80 hover:bg-white/5'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    {newEventDeadlineMode === 'custom' && (
+                      <input
+                        type="datetime-local"
+                        value={newEventVotingDeadline}
+                        onChange={(e) => setNewEventVotingDeadline(e.target.value)}
+                        className="h-10 flex-1 min-w-[200px] px-4 rounded-lg glass-input text-foreground placeholder-white/50 text-sm"
+                      />
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button type="submit" disabled={addingEvent} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium disabled:opacity-50 w-fit">
                     {addingEvent ? '...' : 'Přidat událost'}
                   </button>
-                  {(newEventDate || newEventStartTime || newEventType !== 'training' || newEventLocation || newEventOpponent || newEventNote || newEventCustomName) && (
+                  {(newEventDate || newEventStartTime || newEventType !== 'training' || newEventLocation || newEventOpponent || newEventNote || newEventCustomName || newEventVotingDeadline || newEventDeadlineMode !== 'default') && (
                     <button
                       type="button"
-                      onClick={() => { setNewEventDate(''); setNewEventStartTime(''); setNewEventType('training'); setNewEventLocation(''); setNewEventOpponent(''); setNewEventNote(''); setNewEventCustomName(''); }}
+                      onClick={() => { setNewEventDate(''); setNewEventStartTime(''); setNewEventType('training'); setNewEventLocation(''); setNewEventOpponent(''); setNewEventNote(''); setNewEventCustomName(''); setNewEventVotingDeadline(''); setNewEventDeadlineMode('default'); }}
                       className="px-3 py-2 rounded-lg text-foreground/50 hover:text-foreground/80 hover:bg-white/5 text-sm transition-colors"
                     >
                       Resetovat
@@ -4720,9 +4955,9 @@ function HodnoceniHracuContent() {
                     pattern="[0-9]*"
                     value={newPlayerJerseyNumber}
                     onChange={(e) => setNewPlayerJerseyNumber(e.target.value.replace(/\D/g, '').slice(0, 2))}
-                    placeholder="1–99"
+                    placeholder="0–99"
                     className="w-full px-4 py-2.5 rounded-xl glass-input text-foreground placeholder-white/40"
-                    title="Číslo dresu (1-99)"
+                    title="Číslo dresu (0-99)"
                   />
                 </div>
                 <button
@@ -4756,6 +4991,90 @@ function HodnoceniHracuContent() {
             }}
           />
         )}
+        {/* Re-import duplicitních zápasů popup */}
+        <AnimatePresence>
+          {reimportPopup && (
+            <>
+              <motion.div
+                key="reimport-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-sm"
+                onClick={() => !reimportProcessing && handleReimportChoice('skip')}
+              />
+              <motion.div
+                key="reimport-dialog"
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+              >
+                <div
+                  className="w-full max-w-md rounded-2xl border border-border bg-[var(--glass-bg)] dark:bg-[rgba(8,12,19,0.94)] shadow-2xl p-6"
+                  style={{ backdropFilter: 'blur(20px) saturate(120%)' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h3 className="text-lg font-bold text-foreground mb-1">
+                    Nalezeny duplicitní zápasy ({reimportPopup.duplicates.length})
+                  </h3>
+                  <p className="text-sm text-foreground/60 mb-4">
+                    {reimportPopup.duplicates.length === 1 ? 'Tento zápas již existuje' : 'Tyto zápasy již existují'}. Jak chcete pokračovat?
+                  </p>
+
+                  <div className="max-h-40 overflow-y-auto mb-4 space-y-1.5">
+                    {reimportPopup.duplicates.map(({ matchId, candidate }) => {
+                      const existing = matches.find((m) => m.id === matchId);
+                      const changed = existing && existing.opponent?.trim().toLowerCase() !== candidate.opponent.trim().toLowerCase();
+                      return (
+                        <div key={matchId} className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-surface border border-border">
+                          <span className="text-foreground/50">{candidate.date}</span>
+                          <span className="text-foreground/50">{candidate.startTime}</span>
+                          {changed ? (
+                            <>
+                              <span className="text-red-400 line-through">{existing?.opponent}</span>
+                              <span className="text-foreground/30">&rarr;</span>
+                              <span className="text-emerald-400 font-medium">{candidate.opponent}</span>
+                            </>
+                          ) : (
+                            <span className="text-foreground/80">{candidate.opponent}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => handleReimportChoice('keep_scores')}
+                      disabled={reimportProcessing}
+                      className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white transition-colors"
+                    >
+                      {reimportProcessing ? 'Zpracovávám...' : 'Aktualizovat, zachovat skóre'}
+                    </button>
+                    <button
+                      onClick={() => handleReimportChoice('fresh')}
+                      disabled={reimportProcessing}
+                      className="w-full px-4 py-2.5 rounded-xl text-sm font-medium bg-red-500/80 hover:bg-red-600 disabled:opacity-50 text-white transition-colors"
+                    >
+                      {reimportProcessing ? 'Zpracovávám...' : 'Nahrát znovu bez skóre'}
+                    </button>
+                    <button
+                      onClick={() => handleReimportChoice('skip')}
+                      disabled={reimportProcessing}
+                      className="w-full px-4 py-2 rounded-xl text-sm font-medium text-foreground/60 hover:text-foreground bg-surface hover:bg-surface-hover border border-border transition-colors"
+                    >
+                      Přeskočit duplicity
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
       </MotionPage>
     </div>
   );

@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/** Dekóduje response s automatickou detekcí kódování (UTF-8 → fallback windows-1250 pro české znaky) */
+async function decodeResponse(res: Response): Promise<string> {
+  const buf = await res.arrayBuffer();
+  const text = new TextDecoder('utf-8').decode(buf);
+  return text.includes('\uFFFD') ? new TextDecoder('windows-1250').decode(buf) : text;
+}
+
 // --- Types ---
 interface StrahovskaTeam {
   name: string;
@@ -31,7 +38,7 @@ const DIVISIONS: { lid: number; label: string }[] = [
 async function getTeamsFromDivision(lid: number, label: string): Promise<StrahovskaTeam[]> {
   const res = await fetch(`${BASE}/Liga?LID=${lid}`, { headers: UA });
   if (!res.ok) return [];
-  const html = await res.text();
+  const html = await decodeResponse(res);
 
   const teams: StrahovskaTeam[] = [];
   // Pattern: <a href="../TymProfil/?TID=1431" title="Kolemjdoucí">

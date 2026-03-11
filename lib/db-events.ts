@@ -20,14 +20,18 @@ export interface Event {
   createdAt: string;
   shareToken?: string;
   attendanceFinalizedAt?: string;
+  votingDeadline?: string;
 }
 
 export interface EventWithAttendance extends Event {
   attendance: { playerId: string; attended: boolean }[];
 }
 
-/** Odpovědi se uzavírají den před událostí do půlnoci. Vrací true, pokud už nelze měnit účast. (Pro veřejný odkaz.) */
-export function isAttendanceClosed(eventDateStr: string): boolean {
+/** Odpovědi se uzavírají dle votingDeadline (pokud existuje), jinak den před událostí do půlnoci. Vrací true, pokud už nelze měnit účast. (Pro veřejný odkaz.) */
+export function isAttendanceClosed(eventDateStr: string, votingDeadline?: string | null): boolean {
+  if (votingDeadline) {
+    return new Date() >= new Date(votingDeadline);
+  }
   const eventDate = new Date(eventDateStr + 'T12:00:00');
   const deadline = new Date(eventDate);
   deadline.setDate(deadline.getDate() - 1);
@@ -65,6 +69,7 @@ const mapEvent = (row: Record<string, unknown>): Event => ({
   createdAt: row.created_at as string,
   shareToken: (row.share_token as string) || undefined,
   attendanceFinalizedAt: (row.attendance_finalized_at as string) || undefined,
+  votingDeadline: (row.voting_deadline as string) || undefined,
 });
 
 export const dbEvents = {
@@ -86,9 +91,10 @@ export const dbEvents = {
       location?: string,
       opponent?: string,
       startTime?: string,
-      note?: string
+      note?: string,
+      votingDeadline?: string
     ): Promise<Event> => {
-      const baseRow = {
+      const baseRow: Record<string, unknown> = {
         team_id: teamId,
         date,
         event_type: eventType,
@@ -97,6 +103,9 @@ export const dbEvents = {
         start_time: (startTime?.trim() && /^\d{1,2}:\d{2}$/.test(startTime.trim())) ? startTime.trim() : null,
         note: note?.trim() || null,
       };
+      if (votingDeadline?.trim()) {
+        baseRow.voting_deadline = new Date(votingDeadline.trim()).toISOString();
+      }
       let { data, error } = await client!
         .from('events')
         .insert({ ...baseRow, share_token: crypto.randomUUID() })
@@ -131,6 +140,28 @@ export const dbEvents = {
         .single();
       if (error || !data) return null;
       return mapEvent(data);
+    },
+
+    update: async (
+      eventId: string,
+      teamId: string,
+      updates: { opponent?: string; date?: string; startTime?: string; location?: string }
+    ): Promise<Event | null> => {
+      const toUpdate: Record<string, unknown> = {};
+      if ('opponent' in updates) toUpdate.opponent = (updates.opponent ?? '').trim() || null;
+      if ('date' in updates) toUpdate.date = updates.date;
+      if ('startTime' in updates) toUpdate.start_time = (updates.startTime?.trim() && /^\d{1,2}:\d{2}$/.test(updates.startTime.trim())) ? updates.startTime.trim() : null;
+      if ('location' in updates) toUpdate.location = (updates.location ?? '').trim() || null;
+      if (Object.keys(toUpdate).length === 0) return null;
+      const { data, error } = await client!
+        .from('events')
+        .update(toUpdate)
+        .eq('id', eventId)
+        .eq('team_id', teamId)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data ? mapEvent(data) : null;
     },
 
     delete: async (eventId: string, teamId: string): Promise<boolean> => {

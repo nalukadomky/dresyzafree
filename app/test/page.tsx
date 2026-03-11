@@ -104,10 +104,21 @@ export default function TestPlayerCardPage() {
       form.append('type', type);
 
       const res = await fetch('/api/test/upload', { method: 'POST', body: form });
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || 'Chyba uploadu');
+      let data: { url?: string; error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(res.ok ? 'Neplatná odpověď serveru' : `Chyba uploadu (${res.status})`);
+      }
+      if (!res.ok) throw new Error(data.error || `Chyba uploadu (${res.status})`);
+      if (!data.url) throw new Error('Server nevrátil odkaz na obrázek');
       return data.url;
+    } catch (e: any) {
+      const msg = e?.message || '';
+      if (msg.includes('fetch') || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        throw new Error('Nepodařilo se připojit k serveru. Zkontrolujte, že aplikace běží (npm run dev) a obnovte stránku.');
+      }
+      throw e;
     } finally {
       setUploading(false);
     }
@@ -170,6 +181,9 @@ export default function TestPlayerCardPage() {
     }
 
     setGenerating(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 125_000); // 2 min + rezerva
+
     try {
       const res = await fetch('/api/test/generate-card', {
         method: 'POST',
@@ -179,17 +193,32 @@ export default function TestPlayerCardPage() {
           jerseyPhotoUrl: jUrl,
           playerName: playerName || undefined,
         }),
+        signal: controller.signal,
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Chyba při generování');
+      let data: { cardUrl?: string; error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error('Neplatná odpověď serveru. Zkuste znovu.');
+      }
+      if (!res.ok) throw new Error(data.error || `Chyba při generování (${res.status})`);
+      if (!data.cardUrl) throw new Error('Server nevrátil odkaz na kartu.');
 
       setGeneratedCardUrl(data.cardUrl);
       setView('result');
       toast.success('Karta byla vygenerována!');
     } catch (e: any) {
-      toast.error(e.message);
+      const msg = e?.message || '';
+      if (e?.name === 'AbortError' || msg.includes('abort')) {
+        toast.error('Vypršel čas. Generování může trvat až 2 minuty — zkuste znovu.');
+      } else if (msg.includes('fetch') || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+        toast.error('Nepodařilo se připojit k serveru. Zkontrolujte, že aplikace běží, a zkuste znovu.');
+      } else {
+        toast.error(msg);
+      }
     } finally {
+      clearTimeout(timeoutId);
       setGenerating(false);
     }
   }, [playerPhoto.url, jerseyPhoto.url, cachedJersey?.url, playerName, toast]);

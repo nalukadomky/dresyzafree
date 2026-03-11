@@ -43,7 +43,7 @@ export async function POST(
     if (user.type === 'team' && user.id !== params.id) {
       return NextResponse.json({ error: 'Nemáte oprávnění' }, { status: 403 });
     }
-    const { date, eventType, location, opponent, startTime, note } = await request.json();
+    const { date, eventType, location, opponent, startTime, note, votingDeadline } = await request.json();
     const dateValue = typeof date === 'string' ? date.trim() : '';
     const startTimeValue = typeof startTime === 'string' ? startTime.trim() : '';
     const locationValue = typeof location === 'string' ? location.trim() : '';
@@ -67,7 +67,8 @@ export async function POST(
       locationValue,
       opponent,
       startTimeValue,
-      note
+      note,
+      votingDeadline
     );
     return NextResponse.json({ event });
   } catch (error: unknown) {

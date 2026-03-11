@@ -191,9 +191,10 @@ export const dbPlayers = {
     update: async (
       matchId: string,
       teamId: string,
-      updates: { result?: string; goalsFor?: number; goalsAgainst?: number; isHome?: boolean }
+      updates: { result?: string; goalsFor?: number; goalsAgainst?: number; isHome?: boolean; opponent?: string; date?: string; startTime?: string }
     ): Promise<Match | null> => {
       const toUpdate: Record<string, unknown> = {};
+      if ('opponent' in updates) toUpdate.opponent = (updates.opponent ?? '').trim() || null;
       if ('result' in updates) toUpdate.result = (updates.result ?? '').trim() || null;
       if ('goalsFor' in updates) toUpdate.goals_for = updates.goalsFor ?? null;
       if ('goalsAgainst' in updates) toUpdate.goals_against = updates.goalsAgainst ?? null;
@@ -201,6 +202,8 @@ export const dbPlayers = {
         toUpdate.scored_at = new Date().toISOString();
       }
       if ('isHome' in updates) toUpdate.is_home = updates.isHome ?? null;
+      if ('date' in updates) toUpdate.date = updates.date;
+      if ('startTime' in updates) toUpdate.start_time = (updates.startTime?.trim() && /^\d{1,2}:\d{2}$/.test(updates.startTime.trim())) ? updates.startTime.trim() : null;
       if (Object.keys(toUpdate).length === 0) return null;
       let { data, error } = await client!
         .from('matches')

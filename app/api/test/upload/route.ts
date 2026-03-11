@@ -15,26 +15,26 @@ export async function POST(request: NextRequest) {
   try {
     if (!supabaseAdmin) {
       return NextResponse.json(
-        { error: 'Supabase není nakonfigurováno' },
+        { error: 'Supabase není nakonfigurováno. Nastavte NEXT_PUBLIC_SUPABASE_URL a SUPABASE_SERVICE_ROLE_KEY v .env.local.' },
         { status: 503 }
       );
     }
 
     const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const type = formData.get('type') as string; // 'player' | 'jersey'
+    const file = formData.get('file') as File | null;
+    const type = (formData.get('type') as string) || 'player';
 
-    if (!file) {
-      return NextResponse.json({ error: 'Žádný soubor' }, { status: 400 });
+    if (!file || typeof file.arrayBuffer !== 'function') {
+      return NextResponse.json({ error: 'Žádný soubor nebo neplatný formát' }, { status: 400 });
     }
     if (!file.type.startsWith('image/')) {
-      return NextResponse.json({ error: 'Soubor musí být obrázek' }, { status: 400 });
+      return NextResponse.json({ error: 'Soubor musí být obrázek (JPG, PNG, WebP)' }, { status: 400 });
     }
     if (file.size > MAX_SIZE) {
       return NextResponse.json({ error: 'Max velikost je 5 MB' }, { status: 400 });
     }
 
-    const ext = file.name.split('.').pop() || 'jpg';
+    const ext = (file.name && file.name.includes('.')) ? file.name.split('.').pop() : 'jpg';
     const buffer = Buffer.from(await file.arrayBuffer());
 
     let bucket: string;
@@ -71,10 +71,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ url: urlData.publicUrl });
   } catch (error: any) {
-    console.error('Test upload error:', error);
-    return NextResponse.json(
-      { error: error?.message || 'Chyba serveru' },
-      { status: 500 }
-    );
+    const msg = error?.message ?? String(error ?? 'Chyba serveru');
+    console.error('Test upload error:', msg, error);
+    const friendly =
+      msg.includes('fetch') || msg.includes('ECONNREFUSED') || msg.includes('ENOTFOUND')
+        ? 'Server se nemohl připojit k Supabase. Zkontrolujte síť a .env.local (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).'
+        : msg;
+    return NextResponse.json({ error: friendly }, { status: 500 });
   }
 }

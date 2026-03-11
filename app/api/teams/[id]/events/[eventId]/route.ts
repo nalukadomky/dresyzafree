@@ -33,6 +33,37 @@ export async function GET(
   }
 }
 
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string; eventId: string } }
+) {
+  try {
+    const user = verifyToken(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Neautorizovaný přístup' }, { status: 401 });
+    }
+    if (user.type === 'team' && user.id !== params.id) {
+      return NextResponse.json({ error: 'Nemáte oprávnění' }, { status: 403 });
+    }
+    const { opponent, date, startTime, location } = await request.json();
+    const updates: { opponent?: string; date?: string; startTime?: string; location?: string } = {};
+    if (opponent !== undefined) updates.opponent = opponent;
+    if (typeof date === 'string') updates.date = date;
+    if (typeof startTime === 'string') updates.startTime = startTime;
+    if (typeof location === 'string') updates.location = location;
+    const event = await dbEvents.events.update(params.eventId, params.id, updates);
+    if (!event) {
+      return NextResponse.json({ error: 'Žádné změny' }, { status: 400 });
+    }
+    return NextResponse.json({ event });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: (error as Error)?.message || 'Chyba při úpravě události' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string; eventId: string } }

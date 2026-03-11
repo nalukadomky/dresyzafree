@@ -16,8 +16,8 @@ export async function PATCH(
     const jn = body.jerseyNumber;
     const jerseyNumber = jn === '' || jn === null || jn === undefined ? null : Number(jn);
 
-    if (jerseyNumber !== null && (!Number.isInteger(jerseyNumber) || jerseyNumber < 1 || jerseyNumber > 99)) {
-      return NextResponse.json({ error: 'Číslo dresu musí být 1-99' }, { status: 400 });
+    if (jerseyNumber !== null && (!Number.isInteger(jerseyNumber) || jerseyNumber < 0 || jerseyNumber > 99)) {
+      return NextResponse.json({ error: 'Číslo dresu musí být 0-99' }, { status: 400 });
     }
 
     const updated = await dbPlayers.players.updateJerseyNumber(params.playerId, params.id, jerseyNumber);

@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/** Dekóduje response s automatickou detekcí kódování (UTF-8 → fallback windows-1250 pro české znaky) */
+async function decodeResponse(res: Response): Promise<string> {
+  const buf = await res.arrayBuffer();
+  const text = new TextDecoder('utf-8').decode(buf);
+  return text.includes('\uFFFD') ? new TextDecoder('windows-1250').decode(buf) : text;
+}
+
 // --- Types ---
 interface StrahovskaParsedMatch {
   uid: string;
@@ -89,7 +96,7 @@ async function getFieldNumbersForDate(
     const queryDate = formatDateForQuery(dateStr);
     const res = await fetch(`${BASE}/PrehledZapasu/?datum=${queryDate}`, { headers: UA });
     if (!res.ok) return fieldMap;
-    const html = await res.text();
+    const html = await decodeResponse(res);
 
     // Parse table rows looking for our TID
     const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
@@ -143,7 +150,7 @@ export async function POST(request: NextRequest) {
           { status: 502 }
         );
       }
-      icsText = await icsRes.text();
+      icsText = await decodeResponse(icsRes);
     } catch {
       return NextResponse.json(
         { error: 'Nepodařilo se spojit se strahovskaliga.cz. Zkuste to později.' },

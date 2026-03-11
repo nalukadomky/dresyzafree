@@ -12,7 +12,7 @@ export async function POST(
     if (!event) {
       return NextResponse.json({ error: 'Událost nenalezena' }, { status: 404 });
     }
-    if (isAttendanceClosed(event.date)) {
+    if (isAttendanceClosed(event.date, event.votingDeadline)) {
       return NextResponse.json(
         { error: 'Odpovědi byly uzavřeny den před událostí. Účast již nelze měnit.' },
         { status: 403 }
