@@ -1293,8 +1293,17 @@ function HodnoceniHracuContent() {
       fetchEvents();
       fetchAttendanceStats();
     }
+    if (tab === 'dashboard') {
+      const currentSeason = getSeasonFromDate(new Date().toISOString().slice(0, 10));
+      fetch(`/api/teams/${teamId}/canadian-scoring?season=${currentSeason}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => (r.ok ? r.json() : {}))
+        .then((d: { stats?: CanadianEntry[] }) => setCanadianStats(d?.stats || []))
+        .catch(() => setCanadianStats([]));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, [tab, initialDataReady]);
 
   useEffect(() => {
     if (!initialDataReady || !teamId || !token) return;
@@ -3244,6 +3253,7 @@ function HodnoceniHracuContent() {
                         );
                       }
 
+                      if (layoutItem.id === 'teamForm') {
                       const withData = attendanceStats.filter((s) => s.trainingCount > 0 || s.matchCount > 0);
                       const avgAttendance = withData.length > 0
                         ? withData.reduce((a, s) => a + s.attendancePct, 0) / withData.length
@@ -3270,6 +3280,139 @@ function HodnoceniHracuContent() {
                           onToggleVisibility={handleOverviewToggleVisibility}
                           onSizeChange={handleOverviewSizeChange}
                         >
+                          <div className="space-y-4">
+
+                          {/* ── Nejlepší hráči ── */}
+                          {(() => {
+                            const topGoals = canadianStats.filter((c) => c.goals > 0).sort((a, b) => b.goals - a.goals)[0];
+                            const topAssistsEntry = canadianStats.filter((c) => c.assists > 0).sort((a, b) => b.assists - a.assists)[0];
+                            if (!topGoals && !topAssistsEntry) return null;
+
+                            const topGoalCount = topGoals?.goals ?? 0;
+                            const allTopScorers = canadianStats.filter((c) => c.goals === topGoalCount && topGoalCount > 0);
+                            const topAssistCount = topAssistsEntry?.assists ?? 0;
+                            const allTopAssisters = canadianStats.filter((c) => c.assists === topAssistCount && topAssistCount > 0);
+                            const goalPlayer = topGoals ? players.find((p) => p.id === topGoals.playerId) : null;
+                            const assistPlayer = topAssistsEntry ? players.find((p) => p.id === topAssistsEntry.playerId) : null;
+
+                            return (
+                              <div className="glass-card rounded-2xl p-4 sm:p-6">
+                                <h2 className="text-base sm:text-lg font-semibold text-foreground mb-4">Nejlepší hráči</h2>
+                                <div className="grid grid-cols-2 gap-3">
+                                  {topGoals && goalPlayer && (
+                                    <motion.div
+                                      className="rounded-xl bg-surface-hover/60 p-4 flex flex-col items-center"
+                                      initial={{ opacity: 0, y: 12 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+                                    >
+                                      <div className="relative mb-2">
+                                        {goalPlayer.photoUrl ? (
+                                          <img src={goalPlayer.photoUrl} alt={goalPlayer.name} className="w-16 h-16 rounded-full object-cover border-2 border-emerald-500/30" />
+                                        ) : (
+                                          <div className="w-16 h-16 rounded-full bg-surface border-2 border-emerald-500/30 flex items-center justify-center text-foreground/40 text-xl font-bold">
+                                            {goalPlayer.jerseyNumber ?? goalPlayer.name.charAt(0).toUpperCase()}
+                                          </div>
+                                        )}
+                                        {allTopScorers.length > 1 && (
+                                          <span className="absolute -bottom-1 -right-1 bg-emerald-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-sm">
+                                            +{allTopScorers.length - 1}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-foreground font-semibold text-sm truncate max-w-full">{goalPlayer.name}</span>
+                                      <span className="text-foreground/50 text-xs mt-0.5">Góly</span>
+                                      <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums leading-none mt-1">{topGoals.goals}</span>
+                                    </motion.div>
+                                  )}
+                                  {topAssistsEntry && assistPlayer && (
+                                    <motion.div
+                                      className="rounded-xl bg-surface-hover/60 p-4 flex flex-col items-center"
+                                      initial={{ opacity: 0, y: 12 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.08 }}
+                                    >
+                                      <div className="relative mb-2">
+                                        {assistPlayer.photoUrl ? (
+                                          <img src={assistPlayer.photoUrl} alt={assistPlayer.name} className="w-16 h-16 rounded-full object-cover border-2 border-blue-500/30" />
+                                        ) : (
+                                          <div className="w-16 h-16 rounded-full bg-surface border-2 border-blue-500/30 flex items-center justify-center text-foreground/40 text-xl font-bold">
+                                            {assistPlayer.jerseyNumber ?? assistPlayer.name.charAt(0).toUpperCase()}
+                                          </div>
+                                        )}
+                                        {allTopAssisters.length > 1 && (
+                                          <span className="absolute -bottom-1 -right-1 bg-blue-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-sm">
+                                            +{allTopAssisters.length - 1}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-foreground font-semibold text-sm truncate max-w-full">{assistPlayer.name}</span>
+                                      <span className="text-foreground/50 text-xs mt-0.5">Asistence</span>
+                                      <span className="text-3xl font-black text-blue-500 dark:text-blue-400 tabular-nums leading-none mt-1">{topAssistsEntry.assists}</span>
+                                    </motion.div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* ── Bilance zápasů ── */}
+                          {(() => {
+                            const currentSeason = getSeasonFromDate(new Date().toISOString().slice(0, 10));
+                            const allScored = matches.filter(
+                              (m) =>
+                                getSeasonFromDate(m.date) === currentSeason &&
+                                m.date <= new Date().toISOString().slice(0, 10) &&
+                                m.goalsFor != null &&
+                                m.goalsAgainst != null
+                            );
+                            const bWins = allScored.filter((m) => m.goalsFor! > m.goalsAgainst!).length;
+                            const bDraws = allScored.filter((m) => m.goalsFor === m.goalsAgainst).length;
+                            const bLosses = allScored.filter((m) => m.goalsFor! < m.goalsAgainst!).length;
+                            const bTotal = allScored.length;
+                            return (
+                              <div className="glass-card rounded-2xl p-4 sm:p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                  <h2 className="text-base sm:text-lg font-semibold text-foreground">Bilance zápasů</h2>
+                                  <span className="text-xs text-foreground/50 tabular-nums">Sezóna {currentSeason} · Celkem {bTotal}</span>
+                                </div>
+                                {bTotal === 0 ? (
+                                  <p className="text-foreground/50 italic text-sm">Zatím žádné odehrané zápasy v aktuální sezóně.</p>
+                                ) : (
+                                  <div className="grid grid-cols-3 gap-2.5">
+                                    <motion.div
+                                      className="rounded-xl bg-emerald-500/[0.08] dark:bg-emerald-500/[0.12] py-3 px-2 flex items-center justify-center gap-1.5"
+                                      initial={{ opacity: 0, scale: 0.85 }}
+                                      animate={{ opacity: 1, scale: 1 }}
+                                      transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+                                    >
+                                      <span className="text-lg font-extrabold text-foreground/80">V</span>
+                                      <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums leading-none">{bWins}</span>
+                                    </motion.div>
+                                    <motion.div
+                                      className="rounded-xl bg-foreground/[0.05] dark:bg-foreground/[0.07] py-3 px-2 flex items-center justify-center gap-1.5"
+                                      initial={{ opacity: 0, scale: 0.85 }}
+                                      animate={{ opacity: 1, scale: 1 }}
+                                      transition={{ type: 'spring', stiffness: 300, damping: 22, delay: 0.06 }}
+                                    >
+                                      <span className="text-lg font-extrabold text-foreground/80">R</span>
+                                      <span className="text-2xl font-black text-foreground/50 tabular-nums leading-none">{bDraws}</span>
+                                    </motion.div>
+                                    <motion.div
+                                      className="rounded-xl bg-red-500/[0.08] dark:bg-red-500/[0.12] py-3 px-2 flex items-center justify-center gap-1.5"
+                                      initial={{ opacity: 0, scale: 0.85 }}
+                                      animate={{ opacity: 1, scale: 1 }}
+                                      transition={{ type: 'spring', stiffness: 300, damping: 22, delay: 0.12 }}
+                                    >
+                                      <span className="text-lg font-extrabold text-foreground/80">P</span>
+                                      <span className="text-2xl font-black text-red-500 dark:text-red-400 tabular-nums leading-none">{bLosses}</span>
+                                    </motion.div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+
                           <div className="glass-card rounded-2xl p-4 sm:p-6">
                             <h2 className="text-base sm:text-lg font-semibold text-foreground mb-2">Forma týmu a hráčů</h2>
                             <p className="text-foreground/60 text-sm mb-4">
@@ -3359,8 +3502,13 @@ function HodnoceniHracuContent() {
                               </div>
                             )}
                           </div>
+
+                          </div>
                         </SortableOverviewCard>
                       );
+                      }
+
+                      return null;
                     })}
               </Reorder.Group>
             )}
@@ -3492,6 +3640,23 @@ function HodnoceniHracuContent() {
                   </div>
                 )}
               </div>
+              {(() => {
+                const seasonScored = filteredMatches.filter(m => m.goalsFor != null && m.goalsAgainst != null);
+                if (seasonScored.length === 0) return null;
+                const seasonWins = seasonScored.filter(m => m.goalsFor! > m.goalsAgainst!).length;
+                const seasonDraws = seasonScored.filter(m => m.goalsFor === m.goalsAgainst).length;
+                const seasonLosses = seasonScored.filter(m => m.goalsFor! < m.goalsAgainst!).length;
+                const seasonGF = seasonScored.reduce((a, m) => a + (m.goalsFor ?? 0), 0);
+                const seasonGA = seasonScored.reduce((a, m) => a + (m.goalsAgainst ?? 0), 0);
+                const winPct = Math.round((seasonWins / seasonScored.length) * 100);
+                return (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-foreground/60 mb-3">
+                    <span>{seasonWins}V {seasonDraws}R {seasonLosses}P</span>
+                    <span>Skóre {seasonGF}:{seasonGA}</span>
+                    <span>Úspěšnost {winPct} %</span>
+                  </div>
+                );
+              })()}
               <form onSubmit={addMatch} className="flex flex-col sm:flex-row gap-2 mb-4 flex-wrap">
                 <DatePicker
                   value={newMatchDate}
