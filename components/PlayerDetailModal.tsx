@@ -194,6 +194,10 @@ export default function PlayerDetailModal({
     setSavingJersey(true);
     try {
       const jn = jerseyNumber.trim() ? Number(jerseyNumber.trim()) : null;
+      if (jn === 0 && !window.confirm('Opravdu chcete nastavit číslo dresu 0?')) {
+        setSavingJersey(false);
+        return;
+      }
       const res = await fetch(`/api/teams/${teamId}/players/${player.id}`, {
         method: 'PATCH',
         headers: headers(),

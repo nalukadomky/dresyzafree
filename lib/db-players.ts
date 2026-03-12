@@ -43,7 +43,7 @@ const mapPlayer = (row: any): Player => ({
   id: row.id,
   teamId: row.team_id,
   name: row.name,
-  jerseyNumber: row.jersey_number || undefined,
+  jerseyNumber: row.jersey_number ?? undefined,
   photoUrl: row.photo_url || undefined,
   createdAt: row.created_at,
 });
